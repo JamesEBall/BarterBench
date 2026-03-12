@@ -1,0 +1,17 @@
+{
+  "name": "complex_market",
+  "description": "Six items with complex valuation structure. Tests multi-step planning and optimization across many trade possibilities.",
+  "max_rounds": 12,
+  "agents": [
+    {
+      "role": "Trader A",
+      "inventory": {"iron": 4, "wood": 2, "stone": 3, "grain": 1, "cloth": 5, "spice": 0},
+      "valuations": {"iron": 1, "wood": 4, "stone": 2, "grain": 6, "cloth": 1, "spice": 8}
+    },
+    {
+      "role": "Trader B",
+      "inventory": {"iron": 1, "wood": 3, "stone": 2, "grain": 4, "cloth": 0, "spice": 3},
+      "valuations": {"iron": 5, "wood": 1, "stone": 4, "grain": 1, "cloth": 3, "spice": 2}
+    }
+  ]
+}

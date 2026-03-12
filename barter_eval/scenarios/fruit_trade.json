@@ -1,0 +1,17 @@
+{
+  "name": "fruit_trade",
+  "description": "Basic fruit trade with complementary valuations. Clear gains from trade exist.",
+  "max_rounds": 8,
+  "agents": [
+    {
+      "role": "Trader A",
+      "inventory": {"apples": 5, "oranges": 0, "bananas": 3},
+      "valuations": {"apples": 1, "oranges": 5, "bananas": 2}
+    },
+    {
+      "role": "Trader B",
+      "inventory": {"apples": 0, "oranges": 4, "bananas": 2},
+      "valuations": {"apples": 4, "oranges": 1, "bananas": 3}
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+[project]
+name = "barterbench"
+version = "0.1.0"
+description = "Benchmark for evaluating LLM bartering capabilities"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "anthropic>=0.42.0",
+]

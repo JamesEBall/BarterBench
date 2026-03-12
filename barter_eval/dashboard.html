@@ -1,0 +1,730 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Barter Eval</title>
+<style>
+:root {
+  --bg: #0a0a0a;
+  --surface: #141414;
+  --surface2: #1a1a1a;
+  --border: #262626;
+  --border-light: #1f1f1f;
+  --text: #e5e5e5;
+  --text2: #737373;
+  --text3: #525252;
+  --accent: #e5e5e5;
+  --blue: #60a5fa;
+  --purple: #a78bfa;
+  --green: #34d399;
+  --red: #f87171;
+  --amber: #fbbf24;
+  --mono: 'SF Mono', 'Fira Code', 'JetBrains Mono', 'Cascadia Code', ui-monospace, monospace;
+  --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: var(--sans);
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+.container {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 2rem 2.5rem;
+}
+
+/* Header */
+.header {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  margin-bottom: 0.25rem;
+}
+.header h1 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  color: var(--text);
+}
+.header .version {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  color: var(--text3);
+  border: 1px solid var(--border);
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+}
+.subtitle {
+  color: var(--text2);
+  font-size: 0.8rem;
+  margin-bottom: 1.75rem;
+}
+
+/* Tabs */
+.tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 1.5rem;
+}
+.tab {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  padding: 0.6rem 1.25rem;
+  background: none;
+  border: none;
+  color: var(--text2);
+  cursor: pointer;
+  position: relative;
+  letter-spacing: 0.02em;
+}
+.tab:hover { color: var(--text); }
+.tab.active {
+  color: var(--text);
+}
+.tab.active::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: var(--text);
+}
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+
+/* Cards */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 1rem;
+}
+.card-label {
+  font-family: var(--mono);
+  font-size: 0.65rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text3);
+  margin-bottom: 0.75rem;
+}
+
+/* Filters */
+.filters {
+  display: flex;
+  gap: 0.35rem;
+  margin-bottom: 0.75rem;
+  flex-wrap: wrap;
+}
+.filter-btn {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  padding: 0.2rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text2);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.filter-btn:hover { border-color: var(--text3); color: var(--text); }
+.filter-btn.active {
+  background: var(--text);
+  color: var(--bg);
+  border-color: var(--text);
+}
+
+/* Chart */
+svg { width: 100%; display: block; }
+svg text { font-family: var(--mono); }
+
+/* Tables */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--mono);
+  font-size: 0.75rem;
+}
+th {
+  text-align: left;
+  font-weight: 500;
+  color: var(--text3);
+  padding: 0.4rem 0.6rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+th.r, td.r { text-align: right; }
+td {
+  padding: 0.45rem 0.6rem;
+  border-bottom: 1px solid var(--border-light);
+  color: var(--text);
+}
+tr:hover td { background: var(--surface2); }
+tr.clickable { cursor: pointer; }
+tr.clickable:hover td { background: #1e1e1e; }
+
+.tag {
+  display: inline-block;
+  padding: 0.1rem 0.45rem;
+  border-radius: 4px;
+  font-size: 0.7rem;
+}
+
+/* Stats row */
+.stats-row {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+.stat-card {
+  flex: 1;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1rem 1.25rem;
+}
+.stat-card .val {
+  font-family: var(--mono);
+  font-size: 1.5rem;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+}
+.stat-card .lbl {
+  font-size: 0.7rem;
+  color: var(--text3);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-top: 0.15rem;
+}
+
+/* Replay: Arena */
+.arena {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 1rem;
+}
+.traders {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 1.25rem;
+}
+.trader {
+  text-align: center;
+  width: 44%;
+}
+.sprite {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  margin: 0 auto 0.4rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.75rem;
+  border: 2px solid var(--border);
+}
+.sprite-a { background: rgba(96,165,250,0.1); border-color: rgba(96,165,250,0.3); }
+.sprite-b { background: rgba(167,139,250,0.1); border-color: rgba(167,139,250,0.3); }
+.trader-name {
+  font-weight: 600;
+  font-size: 0.8rem;
+  margin-bottom: 0.15rem;
+}
+.trader-model {
+  font-family: var(--mono);
+  font-size: 0.65rem;
+  color: var(--text2);
+  margin-bottom: 0.4rem;
+}
+.inventory {
+  display: flex;
+  gap: 0.3rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.inv-item {
+  font-family: var(--mono);
+  font-size: 0.65rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  white-space: nowrap;
+  color: var(--text2);
+}
+
+/* Conversation */
+.conversation {
+  max-height: 480px;
+  overflow-y: auto;
+  padding: 0.5rem 0;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+.turn {
+  display: flex;
+  margin-bottom: 0.6rem;
+  opacity: 0;
+  animation: fadeIn 0.25s forwards;
+}
+@keyframes fadeIn { to { opacity: 1; } }
+.turn.left { justify-content: flex-start; }
+.turn.right { justify-content: flex-end; }
+.bubble {
+  max-width: 72%;
+  padding: 0.55rem 0.85rem;
+  border-radius: 10px;
+  font-size: 0.8rem;
+  font-family: var(--sans);
+}
+.turn.left .bubble {
+  background: rgba(96,165,250,0.08);
+  border: 1px solid rgba(96,165,250,0.15);
+  border-bottom-left-radius: 3px;
+}
+.turn.right .bubble {
+  background: rgba(167,139,250,0.08);
+  border: 1px solid rgba(167,139,250,0.15);
+  border-bottom-right-radius: 3px;
+}
+.action-tag {
+  font-family: var(--mono);
+  font-size: 0.6rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 0.2rem;
+}
+.action-propose { color: var(--blue); }
+.action-accept { color: var(--green); }
+.action-reject { color: var(--red); }
+.action-end { color: var(--text3); }
+.msg { font-size: 0.8rem; color: var(--text); }
+.trade-detail {
+  font-family: var(--mono);
+  font-size: 0.65rem;
+  margin-top: 0.3rem;
+  padding: 0.25rem 0.45rem;
+  background: rgba(255,255,255,0.03);
+  border-radius: 5px;
+  color: var(--text2);
+}
+
+/* Controls */
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+.ctrl-btn {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  padding: 0.35rem 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  cursor: pointer;
+  color: var(--text2);
+  transition: all 0.15s;
+}
+.ctrl-btn:hover { border-color: var(--text3); color: var(--text); }
+.step-display {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  color: var(--text3);
+  margin-left: auto;
+}
+
+/* Summary bar */
+.summary-bar {
+  display: flex;
+  gap: 1.5rem;
+  justify-content: center;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+.summary-bar .s-val {
+  font-family: var(--mono);
+  font-size: 1rem;
+  font-weight: 600;
+  text-align: center;
+}
+.summary-bar .s-lbl {
+  font-size: 0.6rem;
+  color: var(--text3);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  text-align: center;
+}
+
+.empty-state {
+  color: var(--text3);
+  text-align: center;
+  padding: 3rem;
+  font-size: 0.8rem;
+}
+
+/* Run selector in replay */
+.run-list {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+</style>
+</head>
+<body>
+<div class="container">
+
+<div class="header">
+  <h1>barter eval</h1>
+  <span class="version">v0.1</span>
+</div>
+<p class="subtitle">evaluating model bartering capabilities</p>
+
+<div class="tabs">
+  <button class="tab active" onclick="switchTab('overview')">overview</button>
+  <button class="tab" onclick="switchTab('replays')">replays</button>
+</div>
+
+<!-- ==================== OVERVIEW TAB ==================== -->
+<div class="tab-content active" id="tab-overview">
+
+<div class="stats-row" id="statsRow"></div>
+
+<div class="card">
+  <div class="card-label">performance over runs</div>
+  <div class="filters" id="scenarioFilters"></div>
+  <svg id="chart" viewBox="0 0 940 280" preserveAspectRatio="xMidYMid meet"></svg>
+</div>
+
+<div class="card">
+  <div class="card-label">leaderboard</div>
+  <table id="leaderboard"></table>
+</div>
+
+<div class="card">
+  <div class="card-label">run history</div>
+  <table id="history"></table>
+</div>
+
+</div>
+
+<!-- ==================== REPLAYS TAB ==================== -->
+<div class="tab-content" id="tab-replays">
+
+<div class="run-list" id="runSelector"></div>
+
+<div class="controls" id="replayControls">
+  <button class="ctrl-btn" onclick="restart()">restart</button>
+  <button class="ctrl-btn" onclick="stepBack()">back</button>
+  <button class="ctrl-btn" onclick="stepForward()">step</button>
+  <button class="ctrl-btn" onclick="playAll()">play</button>
+  <span class="step-display" id="stepDisplay">0 / 0</span>
+</div>
+
+<div class="arena" id="arena">
+  <div class="traders" id="traders"></div>
+  <div class="conversation" id="conversation"></div>
+  <div class="summary-bar" id="summary"></div>
+</div>
+
+</div>
+
+</div><!-- /container -->
+
+<script>
+const COLORS = { haiku: '#60a5fa', sonnet: '#34d399', opus: '#a78bfa' };
+const ITEM_EMOJI = {
+  apples:'\u{1F34E}',oranges:'\u{1F34A}',bananas:'\u{1F34C}',
+  gold:'\u{1FA99}',silver:'\u{1F948}',copper:'\u{1F7E4}',
+  widgets:'\u2699\uFE0F',gadgets:'\u{1F527}',gems:'\u{1F48E}',
+  iron:'\u26CF\uFE0F',wood:'\u{1FAB5}',stone:'\u{1FAA8}',grain:'\u{1F33E}',cloth:'\u{1F9F5}',spice:'\u{1F336}\uFE0F',
+};
+function gc(m) { return COLORS[m] || '#6b7280'; }
+
+let allData = [], activeScenario = 'all';
+let currentRun = null, currentStep = 0, inventories = [null,null], playing = false;
+
+// ---- Data ----
+async function loadData() {
+  try {
+    const r = await fetch('results.json');
+    allData = (await r.json()).filter(d => !d.error);
+  } catch { allData = []; }
+  renderOverview();
+  buildRunSelector();
+}
+
+// ---- Tabs ----
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.textContent === name));
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.toggle('active', t.id === `tab-${name}`));
+  if (name === 'replays' && allData.length && !currentRun) selectRun(0);
+}
+
+// ---- Overview ----
+function filtered() {
+  return activeScenario === 'all' ? allData : allData.filter(d => d.scenario === activeScenario);
+}
+
+function renderOverview() {
+  renderStats();
+  renderFilters();
+  renderChart();
+  renderLeaderboard();
+  renderHistory();
+}
+
+function renderStats() {
+  const d = allData;
+  const el = document.getElementById('statsRow');
+  if (!d.length) { el.innerHTML = ''; return; }
+  const models = new Set([...d.map(x=>x.model_a),...d.map(x=>x.model_b)]);
+  const avgScore = d.reduce((a,x)=>a+(x.barter_score??0),0)/d.length;
+  const avgPareto = d.reduce((a,x)=>a+(x.pareto_efficiency??0),0)/d.length;
+  el.innerHTML = `
+    <div class="stat-card"><div class="val">${d.length}</div><div class="lbl">total runs</div></div>
+    <div class="stat-card"><div class="val">${models.size}</div><div class="lbl">models</div></div>
+    <div class="stat-card"><div class="val">${avgScore.toFixed(3)}</div><div class="lbl">avg score</div></div>
+    <div class="stat-card"><div class="val">${(avgPareto*100).toFixed(0)}%</div><div class="lbl">avg pareto</div></div>`;
+}
+
+function renderFilters() {
+  const scenarios = ['all', ...new Set(allData.map(d => d.scenario))];
+  const el = document.getElementById('scenarioFilters');
+  el.innerHTML = '';
+  scenarios.forEach(s => {
+    const btn = document.createElement('button');
+    btn.className = 'filter-btn' + (s === activeScenario ? ' active' : '');
+    btn.textContent = s;
+    btn.onclick = () => { activeScenario = s; renderOverview(); };
+    el.appendChild(btn);
+  });
+}
+
+function renderChart() {
+  const data = filtered();
+  const svg = document.getElementById('chart');
+  svg.innerHTML = '';
+  if (!data.length) { svg.innerHTML = '<text x="470" y="140" text-anchor="middle" fill="#525252" font-size="13">no data yet</text>'; return; }
+
+  const W=940,H=280,p={t:16,r:24,b:36,l:50};
+  const pw=W-p.l-p.r, ph=H-p.t-p.b;
+  const yVals=data.map(d=>d.barter_score??0);
+  const yMin=Math.min(...yVals)*0.92, yMax=Math.max(...yVals)*1.08||1;
+  const xS=i=>p.l+(i/Math.max(data.length-1,1))*pw;
+  const yS=v=>p.t+ph-((v-yMin)/(yMax-yMin))*ph;
+
+  for(let i=0;i<=4;i++){
+    const y=p.t+(i/4)*ph, v=yMax-(i/4)*(yMax-yMin);
+    svg.innerHTML+=`<line x1="${p.l}" y1="${y}" x2="${W-p.r}" y2="${y}" stroke="#1f1f1f" stroke-width="1"/>`;
+    svg.innerHTML+=`<text x="${p.l-6}" y="${y+3}" text-anchor="end" fill="#525252" font-size="9">${v.toFixed(2)}</text>`;
+  }
+  svg.innerHTML+=`<text x="${p.l+pw/2}" y="${H-4}" text-anchor="middle" fill="#525252" font-size="10">run</text>`;
+
+  let best=-Infinity;
+  const fp=data.map((d,i)=>{best=Math.max(best,d.barter_score??0);return`${xS(i)},${yS(best)}`;});
+  svg.innerHTML+=`<polyline points="${fp.join(' ')}" fill="none" stroke="#404040" stroke-width="1.5" stroke-dasharray="4,4"/>`;
+
+  data.forEach((d,i)=>{
+    const cx=xS(i),cy=yS(d.barter_score??0),c=gc(d.model_a),c2=gc(d.model_b);
+    const t=`${d.scenario}: ${d.model_a} vs ${d.model_b}&#10;score=${(d.barter_score??0).toFixed(3)}`;
+    svg.innerHTML+=`<circle cx="${cx}" cy="${cy}" r="5" fill="${c}" opacity="0.85"><title>${t}</title></circle>`;
+    svg.innerHTML+=`<circle cx="${cx}" cy="${cy}" r="5" fill="none" stroke="${c2}" stroke-width="1.5" opacity="0.5"/>`;
+  });
+
+  const models=[...new Set([...allData.map(d=>d.model_a),...allData.map(d=>d.model_b)])];
+  models.forEach((m,i)=>{
+    const lx=p.l+i*80;
+    svg.innerHTML+=`<circle cx="${lx}" cy="${H-20}" r="3.5" fill="${gc(m)}"/>`;
+    svg.innerHTML+=`<text x="${lx+7}" y="${H-17}" fill="#737373" font-size="9">${m}</text>`;
+  });
+}
+
+function renderLeaderboard() {
+  const data=filtered(), el=document.getElementById('leaderboard');
+  if(!data.length){el.innerHTML='<tr><td class="empty-state" colspan="6">no data</td></tr>';return;}
+  const s={};
+  data.forEach(d=>{['model_a','model_b'].forEach((k,idx)=>{
+    const m=d[k];if(!s[m])s[m]={sc:[],su:[],pa:[],de:[],n:0};
+    s[m].sc.push(d.barter_score??0);s[m].su.push(d[`utility_gain_${idx}`]??0);
+    s[m].pa.push(d.pareto_efficiency??0);s[m].de.push(d.deal_rate??0);s[m].n++;
+  });});
+  const avg=a=>a.reduce((x,y)=>x+y,0)/a.length;
+  const rows=Object.entries(s).map(([m,v])=>({m,sc:avg(v.sc),su:avg(v.su),pa:avg(v.pa),de:avg(v.de)*100,n:v.n})).sort((a,b)=>b.sc-a.sc);
+  el.innerHTML=`<thead><tr><th>model</th><th class="r">score</th><th class="r">surplus</th><th class="r">pareto</th><th class="r">deal%</th><th class="r">runs</th></tr></thead>
+  <tbody>${rows.map(r=>`<tr><td><span class="tag" style="background:${gc(r.m)}18;color:${gc(r.m)}">${r.m}</span></td>
+  <td class="r">${r.sc.toFixed(3)}</td><td class="r">${r.su.toFixed(1)}</td><td class="r">${r.pa.toFixed(3)}</td><td class="r">${r.de.toFixed(0)}%</td><td class="r">${r.n}</td></tr>`).join('')}</tbody>`;
+}
+
+function renderHistory() {
+  const data=filtered(), el=document.getElementById('history');
+  if(!data.length){el.innerHTML='<tr><td class="empty-state" colspan="8">no data</td></tr>';return;}
+  el.innerHTML=`<thead><tr><th>#</th><th>scenario</th><th>agent a</th><th>agent b</th><th class="r">surplus</th><th class="r">pareto</th><th class="r">trades</th><th class="r">score</th></tr></thead>
+  <tbody>${data.map((d,i)=>`<tr class="clickable" onclick="openReplay(${allData.indexOf(d)})">
+  <td>${d.run_id}</td><td>${d.scenario}</td>
+  <td><span class="tag" style="background:${gc(d.model_a)}18;color:${gc(d.model_a)}">${d.model_a}</span></td>
+  <td><span class="tag" style="background:${gc(d.model_b)}18;color:${gc(d.model_b)}">${d.model_b}</span></td>
+  <td class="r">${(d.total_surplus??0).toFixed(1)}</td><td class="r">${(d.pareto_efficiency??0).toFixed(3)}</td>
+  <td class="r">${d.num_trades??0}</td><td class="r">${(d.barter_score??0).toFixed(3)}</td></tr>`).join('')}</tbody>`;
+}
+
+function openReplay(idx) {
+  switchTab('replays');
+  selectRun(idx);
+}
+
+// ---- Replays ----
+function buildRunSelector() {
+  const el=document.getElementById('runSelector');
+  el.innerHTML='';
+  allData.filter(d=>d.history&&d.history.length).forEach((run,i)=>{
+    const btn=document.createElement('button');
+    btn.className='filter-btn'+(currentRun===run?' active':'');
+    btn.textContent=`${run.scenario} (${run.model_a} v ${run.model_b})`;
+    btn.onclick=()=>selectRun(i);
+    el.appendChild(btn);
+  });
+}
+
+function selectRun(idx) {
+  const runs=allData.filter(d=>d.history&&d.history.length);
+  if(!runs[idx])return;
+  currentRun=runs[idx]; currentStep=0; playing=false;
+  inventories=currentRun.initial_inventories.map(inv=>({...inv}));
+  buildRunSelector();
+  renderTraders();
+  document.getElementById('conversation').innerHTML='';
+  updateStep(); renderSummary(false);
+}
+
+function renderTraders() {
+  if(!currentRun)return;
+  const el=document.getElementById('traders');
+  el.innerHTML=[0,1].map(i=>{
+    const role=i===0?'Trader A':'Trader B', model=i===0?currentRun.model_a:currentRun.model_b;
+    const sc=i===0?'sprite-a':'sprite-b', em=i===0?'\u{1F9D1}\u200D\u{1F4BC}':'\u{1F469}\u200D\u{1F4BC}';
+    return`<div class="trader"><div class="sprite ${sc}">${em}</div><div class="trader-name">${role}</div>
+    <div class="trader-model">${model}</div><div class="inventory" id="inv-${i}">
+    ${Object.entries(inventories[i]).map(([k,v])=>`<span class="inv-item">${ITEM_EMOJI[k]||''} ${k}:${v}</span>`).join('')}
+    </div></div>`;
+  }).join('');
+}
+
+function updateInv() {
+  [0,1].forEach(i=>{
+    const el=document.getElementById(`inv-${i}`);if(!el)return;
+    el.innerHTML=Object.entries(inventories[i]).map(([k,v])=>`<span class="inv-item">${ITEM_EMOJI[k]||''} ${k}:${v}</span>`).join('');
+  });
+}
+
+function applyTrade() {
+  const h=currentRun.history;
+  for(let j=currentStep-1;j>=0;j--){
+    if(h[j].action==='propose_trade'&&!h[j].invalid){
+      const p=h[j].agent,r=1-p,g=h[j].give||{},rc=h[j].receive||{};
+      Object.entries(g).forEach(([k,v])=>{inventories[p][k]=(inventories[p][k]||0)-v;inventories[r][k]=(inventories[r][k]||0)+v;});
+      Object.entries(rc).forEach(([k,v])=>{inventories[r][k]=(inventories[r][k]||0)-v;inventories[p][k]=(inventories[p][k]||0)+v;});
+      break;
+    }
+  }
+}
+
+function unapplyTrade(si) {
+  const h=currentRun.history;
+  for(let j=si-1;j>=0;j--){
+    if(h[j].action==='propose_trade'&&!h[j].invalid){
+      const p=h[j].agent,r=1-p,g=h[j].give||{},rc=h[j].receive||{};
+      Object.entries(g).forEach(([k,v])=>{inventories[p][k]=(inventories[p][k]||0)+v;inventories[r][k]=(inventories[r][k]||0)-v;});
+      Object.entries(rc).forEach(([k,v])=>{inventories[r][k]=(inventories[r][k]||0)+v;inventories[p][k]=(inventories[p][k]||0)-v;});
+      break;
+    }
+  }
+}
+
+function renderTurn(t) {
+  const conv=document.getElementById('conversation');
+  const side=t.agent===0?'left':'right';
+  const ac=t.action.includes('propose')?'action-propose':t.action.includes('accept')?'action-accept':t.action.includes('reject')?'action-reject':'action-end';
+  let td='';
+  if(t.action==='propose_trade'){
+    const gs=Object.entries(t.give||{}).map(([k,v])=>`${ITEM_EMOJI[k]||''} ${v} ${k}`).join(', ');
+    const rs=Object.entries(t.receive||{}).map(([k,v])=>`${ITEM_EMOJI[k]||''} ${v} ${k}`).join(', ');
+    td=`<div class="trade-detail">give: ${gs} \u21C4 want: ${rs}</div>`;
+    if(t.invalid) td+=`<div class="trade-detail" style="color:var(--red)">invalid</div>`;
+  }
+  const div=document.createElement('div');
+  div.className=`turn ${side}`;
+  div.innerHTML=`<div class="bubble"><div class="action-tag ${ac}">${t.action.replace(/_/g,' ')}</div><div class="msg">${t.message||''}</div>${td}</div>`;
+  conv.appendChild(div);
+  conv.scrollTop=conv.scrollHeight;
+}
+
+function stepForward() {
+  if(!currentRun||currentStep>=currentRun.history.length)return;
+  const t=currentRun.history[currentStep]; currentStep++;
+  if(t.action==='accept_trade'){applyTrade();updateInv();}
+  renderTurn(t); updateStep();
+  if(currentStep>=currentRun.history.length) renderSummary(true);
+}
+
+function stepBack() {
+  if(!currentRun||currentStep<=0)return; currentStep--;
+  const t=currentRun.history[currentStep];
+  if(t.action==='accept_trade'){unapplyTrade(currentStep);updateInv();}
+  const conv=document.getElementById('conversation');
+  if(conv.lastChild)conv.removeChild(conv.lastChild);
+  updateStep(); renderSummary(false);
+}
+
+function restart() {
+  if(!currentRun)return; playing=false; currentStep=0;
+  inventories=currentRun.initial_inventories.map(inv=>({...inv}));
+  renderTraders(); document.getElementById('conversation').innerHTML='';
+  updateStep(); renderSummary(false);
+}
+
+async function playAll() {
+  if(!currentRun||playing)return; playing=true;
+  while(currentStep<currentRun.history.length&&playing){stepForward();await new Promise(r=>setTimeout(r,700));}
+  playing=false;
+}
+
+function updateStep() {
+  const n=currentRun?currentRun.history.length:0;
+  document.getElementById('stepDisplay').textContent=`${currentStep} / ${n}`;
+}
+
+function renderSummary(show) {
+  const el=document.getElementById('summary');
+  if(!show||!currentRun){el.innerHTML='';return;}
+  const r=currentRun;
+  el.innerHTML=`
+    <div><div class="s-val">${(r.total_surplus??0).toFixed(1)}</div><div class="s-lbl">surplus</div></div>
+    <div><div class="s-val">${((r.pareto_efficiency??0)*100).toFixed(0)}%</div><div class="s-lbl">pareto</div></div>
+    <div><div class="s-val">${r.num_trades??0}</div><div class="s-lbl">trades</div></div>
+    <div><div class="s-val">${(r.barter_score??0).toFixed(3)}</div><div class="s-lbl">score</div></div>`;
+}
+
+loadData();
+setInterval(loadData, 5000);
+</script>
+</body>
+</html>
