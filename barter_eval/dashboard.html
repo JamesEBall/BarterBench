@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>BarterBench</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
 <style>
 :root {
   --bg: #ffffff;
@@ -242,6 +243,11 @@ tr.clickable:hover td { background: #e5e7eb; }
   font-family: var(--mono);
   font-size: 0.6rem;
   color: var(--text2);
+}
+.agent-card .agent-strat {
+  font-family: var(--mono);
+  font-size: 0.55rem;
+  font-weight: 600;
   margin-bottom: 0.3rem;
 }
 .goal-bar {
@@ -537,6 +543,12 @@ tr.clickable:hover td { background: #e5e7eb; }
 
 <div class="arena" id="arena">
   <div class="agents-grid" id="agentsGrid"></div>
+  <div class="card" style="margin-bottom:0.75rem;padding:0.75rem 1rem">
+    <div class="card-label">goal completion over time</div>
+    <div style="position:relative;height:220px">
+      <canvas id="goalChart"></canvas>
+    </div>
+  </div>
   <div class="order-book" id="orderBook">
     <div class="ob-label">Order Book</div>
     <div id="obEntries"><span style="color:var(--text3);font-size:0.7rem">empty</span></div>
@@ -591,6 +603,7 @@ function itemStr(items) {
 
 let allData = [], eloRatings = {}, matchLog = [], activeScenario = 'all';
 let currentRun = null, currentStep = 0, inventories = [], orderBook = [], playing = false;
+let goalHistory = []; // [{step, completions: [per-agent completion]}]
 
 // ---- Data ----
 async function loadData() {
@@ -852,14 +865,29 @@ function renderLeaderboard() {
     inv: avg(v.invalids)*100, n: v.scores.length, ...wld(m)
   })).sort((a,b) => b.elo - a.elo);
 
-  el.innerHTML = `<thead><tr><th>model</th><th class="r">elo</th><th class="r">W-L-D</th><th class="r">goal %</th><th class="r">invalid %</th><th class="r">matches</th></tr></thead>
-  <tbody>${rows.map(r => `<tr>
-    <td><span class="tag" style="background:${gc(r.m)}18;color:${gc(r.m)}">${r.m}</span></td>
+  // Parse contestant name into strategy + model columns
+  function parseContestant(name) {
+    const parts = name.split(':');
+    if (parts.length === 2) return { strategy: parts[0], model: parts[1] };
+    return { strategy: '', model: name };
+  }
+
+  const hasStrategies = rows.some(r => r.m.includes(':'));
+  const stratHeader = hasStrategies ? '<th>strategy</th><th>model</th>' : '<th>contestant</th>';
+  el.innerHTML = `<thead><tr>${stratHeader}<th class="r">elo</th><th class="r">W-L-D</th><th class="r">goal %</th><th class="r">invalid %</th><th class="r">matches</th></tr></thead>
+  <tbody>${rows.map(r => {
+    const p = parseContestant(r.m);
+    const nameCell = hasStrategies
+      ? `<td><span class="tag" style="background:${gc(r.m)}18;color:${gc(r.m)}">${p.strategy}</span></td><td><span class="tag" style="background:${gc(p.model)}18;color:${gc(p.model)}">${p.model}</span></td>`
+      : `<td><span class="tag" style="background:${gc(r.m)}18;color:${gc(r.m)}">${r.m}</span></td>`;
+    return `<tr>
+    ${nameCell}
     <td class="r" style="font-weight:600">${Math.round(r.elo)}</td>
     <td class="r">${r.w}-${r.l}-${r.d}</td>
     <td class="r">${(r.sc*100).toFixed(1)}%</td>
     <td class="r">${r.inv.toFixed(1)}%</td>
-    <td class="r">${r.n}</td></tr>`).join('')}</tbody>`;
+    <td class="r">${r.n}</td></tr>`;
+  }).join('')}</tbody>`;
 }
 
 function renderHistory() {
@@ -916,14 +944,21 @@ function buildRunSelector() {
 function selectRun(idx) {
   const runs = allData.filter(d => d.history && d.history.length);
   if (!runs[idx]) return;
+  if (goalChartInstance) { goalChartInstance.destroy(); goalChartInstance = null; }
   currentRun = runs[idx];
   currentStep = 0;
   playing = false;
   inventories = (currentRun.initial_inventories || []).map(inv => ({...inv}));
   orderBook = [];
+  const targets = currentRun.targets || [];
+  goalHistory = [{
+    step: 0,
+    completions: inventories.map((inv, i) => computeCompletion(inv, targets[i] || {}))
+  }];
   buildRunSelector();
   renderAgents();
   renderOrderBook();
+  renderGoalChart();
   document.getElementById('eventLog').innerHTML = '';
   updateStep();
   renderSummary(false);
@@ -935,20 +970,25 @@ function renderAgents() {
   const n = currentRun.model_assignments ? currentRun.model_assignments.length : 0;
   const targets = currentRun.targets || [];
 
+  const strats = currentRun.strategy_assignments || [];
   el.innerHTML = '';
   for (let i = 0; i < n; i++) {
     const model = currentRun.model_assignments[i];
+    const strat = strats[i] || '';
+    const contestant = strat && strat !== model ? strat : model;
     const inv = inventories[i] || {};
     const target = targets[i] || {};
     const completion = computeCompletion(inv, target);
-    const color = gc(model);
+    const color = gc(contestant);
     const emoji = AGENT_EMOJI[i % AGENT_EMOJI.length];
+    const stratLabel = strat && strat !== model ? `<div class="agent-strat" style="color:${color}">${strat}</div>` : '';
 
     el.innerHTML += `
       <div class="agent-card" id="agent-card-${i}">
         <div class="sprite" style="background:${color}11;border-color:${color}44">${emoji}</div>
         <div class="agent-name">Trader ${i}</div>
-        <div class="agent-model" style="color:${color}">${model}</div>
+        <div class="agent-model" style="color:${gc(model)}">${model}</div>
+        ${stratLabel}
         <div class="goal-bar"><div class="goal-fill" id="goal-${i}" style="width:${completion*100}%;background:${color}"></div></div>
         <div class="goal-pct" id="goalpct-${i}">${(completion*100).toFixed(0)}% goal</div>
         <div class="inventory" id="inv-${i}">
@@ -1002,6 +1042,79 @@ function renderOrderBook() {
   el.innerHTML = orderBook.map(o =>
     `<div class="ob-entry">[#${o.id}] Trader ${o.poster} gives ${itemStr(o.give)} for ${itemStr(o.want)}</div>`
   ).join('');
+}
+
+let goalChartInstance = null;
+function renderGoalChart() {
+  const canvas = document.getElementById('goalChart');
+  if (!canvas || !currentRun) return;
+
+  const n = currentRun.model_assignments ? currentRun.model_assignments.length : 0;
+  const strats = currentRun.strategy_assignments || [];
+  const labels = goalHistory.map(h => h.step);
+
+  const datasets = [];
+  for (let i = 0; i < n; i++) {
+    const model = currentRun.model_assignments[i];
+    const strat = strats[i] || '';
+    const contestant = strat && strat !== model ? strat : model;
+    const color = gc(contestant);
+    const agentLabel = `T${i} ${contestant}` + (strat && strat !== model ? ` (${model})` : '');
+
+    datasets.push({
+      label: agentLabel,
+      data: goalHistory.map(h => (h.completions[i] * 100).toFixed(1)),
+      borderColor: color,
+      backgroundColor: color + '18',
+      borderWidth: 2,
+      pointRadius: goalHistory.length > 30 ? 0 : 3,
+      pointHoverRadius: 5,
+      tension: 0.3,
+      fill: false,
+    });
+  }
+
+  if (goalChartInstance) {
+    goalChartInstance.data.labels = labels;
+    goalChartInstance.data.datasets = datasets;
+    goalChartInstance.update('none');
+    return;
+  }
+
+  goalChartInstance = new Chart(canvas, {
+    type: 'line',
+    data: { labels, datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: {
+          position: 'bottom',
+          labels: { font: { size: 10, family: "'SF Mono', monospace" }, boxWidth: 12, padding: 8 }
+        },
+        tooltip: {
+          callbacks: {
+            label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y}%`
+          }
+        }
+      },
+      scales: {
+        x: {
+          title: { display: true, text: 'step', font: { size: 10 } },
+          grid: { color: '#e5e7eb' },
+          ticks: { font: { size: 9 } }
+        },
+        y: {
+          min: 0, max: 100,
+          title: { display: true, text: 'goal %', font: { size: 10 } },
+          grid: { color: '#e5e7eb' },
+          ticks: { font: { size: 9 }, callback: v => v + '%' }
+        }
+      }
+    }
+  });
 }
 
 function renderEvent(h) {
@@ -1153,6 +1266,13 @@ function stepForward() {
   updateAgents();
   renderOrderBook();
   renderEvent(h);
+  // Track goal completion
+  const targets = currentRun.targets || [];
+  goalHistory.push({
+    step: currentStep,
+    completions: inventories.map((inv, i) => computeCompletion(inv, targets[i] || {}))
+  });
+  renderGoalChart();
   updateStep();
   if (currentStep >= currentRun.history.length) renderSummary(true);
 }
@@ -1166,20 +1286,31 @@ function stepBack() {
   renderOrderBook();
   const log = document.getElementById('eventLog');
   if (log.lastChild) log.removeChild(log.lastChild);
+  if (goalHistory.length > 1) goalHistory.pop();
+  renderGoalChart();
   updateStep();
   renderSummary(false);
 }
 
 function restart() {
   if (!currentRun) return;
+  if (goalChartInstance) { goalChartInstance.destroy(); goalChartInstance = null; }
   playing = false;
   currentStep = 0;
   inventories = (currentRun.initial_inventories || []).map(inv => ({...inv}));
   orderBook = [];
+  // Record initial goal state
+  const targets = currentRun.targets || [];
+  goalHistory = [{
+    step: 0,
+    completions: inventories.map((inv, i) => computeCompletion(inv, targets[i] || {}))
+  }];
   renderAgents();
   renderOrderBook();
+  renderGoalChart();
   document.getElementById('eventLog').innerHTML = '';
-  document.getElementById('reasoningPanel').classList.remove('visible');
+  document.getElementById('rpText').innerHTML = '<span class="rp-empty">Click an event or step through the replay</span>';
+  document.getElementById('rpAgent').textContent = '';
   updateStep();
   renderSummary(false);
 }
