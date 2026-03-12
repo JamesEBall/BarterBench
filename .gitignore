@@ -8,10 +8,16 @@ build/
 .env
 
 # Generated data
-barter_eval/results.json
-barter_eval/elo_ratings.json
-barter_eval/match_log.json
-barter_eval/runs/
+results.json
+elo_ratings.json
+match_log.json
+runs/
+arena/results.json
+arena/elo_ratings.json
+arena/match_log.json
+arena/runs/
+arena/live_*.json
+arena/*.lock
 uv.lock
 
 # macOS

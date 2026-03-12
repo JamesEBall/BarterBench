@@ -299,38 +299,38 @@ A key property of Elo ratings: **new contestants can be added at any time** with
 
 ```bash
 # Single match
-python3 -m barter_eval --eval gold_rush --models haiku:3,opus:3
+python3 eval.py --eval gold_rush --models haiku:3,opus:3
 
 # Full tournament (all scenarios, 3 runs each)
-python3 -m barter_eval --eval all --models haiku,opus --runs 3
+python3 eval.py --eval all --models haiku,opus --runs 3
 
 # Fresh start
-python3 -m barter_eval --eval all --models haiku,opus --runs 3 --clear
+python3 eval.py --eval all --models haiku,opus --runs 3 --clear
 ```
 
 ### Arena Mode (compare strategies across models)
 
 ```bash
 # All strategies, all scenarios, all on haiku
-python3 -m barter_eval --arena --eval all --runs 3
+python3 eval.py --arena --eval all --runs 3
 
 # Cross-model arena: 3 strategies × 3 models = 9 contestants
-python3 -m barter_eval --arena --models haiku,sonnet,opus --eval gold_rush
+python3 eval.py --arena --models haiku,sonnet,opus --eval gold_rush
 
 # Two strategies head-to-head
-python3 -m barter_eval --arena --strategies aggressive,cooperative --eval gold_rush
+python3 eval.py --arena --strategies aggressive,cooperative --eval gold_rush
 
 # Submit a new strategy
-python3 -m barter_eval --submit "my_strat" "Trade aggressively for scarce items"
+python3 eval.py --submit "my_strat" "Trade aggressively for scarce items"
 ```
 
 ### Other Commands
 
 ```bash
-python3 -m barter_eval --elo       # View ELO ratings
-python3 -m barter_eval --list      # List scenarios & strategies
-python3 -m barter_eval --serve     # Interactive dashboard with replay viewer
-python3 -m barter_eval --clear     # Reset all results and ratings
+python3 eval.py --elo       # View ELO ratings
+python3 eval.py --list      # List scenarios & strategies
+python3 eval.py --serve     # Interactive dashboard with replay viewer
+python3 eval.py --clear     # Reset all results and ratings
 ```
 
 ## 7. Built-in Strategies
@@ -364,12 +364,11 @@ The gossip system means agents must decide on every turn: **broadcast to the mar
 ## 9. Architecture
 
 ```
-barter_eval/
+├── eval.py           # CLI entry point, tournament orchestration
 ├── agent.py          # LLM agent wrapper (API + CLI backends)
 ├── engine.py         # N-agent marketplace engine with order book
 ├── scoring.py        # Goal completion, scarce item capture
 ├── elo.py            # ELO rating computation + persistence
-├── eval.py           # CLI entry point, tournament orchestration
 ├── dashboard.html    # Dashboard: ELO leaderboard + trade replay viewer
 ├── arena/            # Arena mode: prompt strategy competition
 │   ├── runner.py     # Arena orchestration with file-locked parallel runs
