@@ -8,14 +8,14 @@ from datetime import datetime, timezone
 from itertools import combinations, product
 from pathlib import Path
 
-from ..agent import MarketAgent
-from ..engine import MarketEngine
-from ..elo import (
+from agent import MarketAgent
+from engine import MarketEngine
+from elo import (
     determine_match_result, update_ratings,
     DEFAULT_RATING,
 )
-from ..scoring import compute_metrics
-from ..eval import load_scenario, list_scenarios, auto_model_config
+from scoring import compute_metrics
+from eval import load_scenario, list_scenarios, auto_model_config
 
 ARENA_DIR = Path(__file__).parent
 STRATEGIES_DIR = ARENA_DIR / "strategies"

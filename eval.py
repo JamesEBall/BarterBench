@@ -9,10 +9,10 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .agent import MarketAgent
-from .engine import MarketEngine
-from .elo import record_match, print_elo_leaderboard, reset_ratings, load_ratings
-from .scoring import compute_metrics
+from agent import MarketAgent
+from engine import MarketEngine
+from elo import record_match, print_elo_leaderboard, reset_ratings, load_ratings
+from scoring import compute_metrics
 
 SCENARIOS_DIR = Path(__file__).parent / "scenarios"
 RESULTS_FILE = Path(__file__).parent / "results.json"
@@ -371,12 +371,12 @@ def main():
 
     if args.elo:
         print_elo_leaderboard()
-        from .arena.runner import print_arena_leaderboard
+        from arena.runner import print_arena_leaderboard
         print_arena_leaderboard()
         return
 
     if args.submit:
-        from .arena.runner import submit_strategy
+        from arena.runner import submit_strategy
         submit_strategy(args.submit[0], args.submit[1])
         return
 
@@ -389,7 +389,7 @@ def main():
             scarce_items = ", ".join(f"{k} ({v['ratio']:.0%} supply)" for k, v in scarcity.items()) if scarcity else "none"
             print(f"  {s:<20} {n} agents, {scenario.get('max_rounds', 10)} rounds — scarcity: {scarce_items}")
 
-        from .arena.runner import list_strategies
+        from arena.runner import list_strategies
         strats = list_strategies()
         if strats:
             print(f"\nAvailable strategies ({len(strats)}):")
@@ -402,13 +402,13 @@ def main():
         if RESULTS_FILE.exists():
             RESULTS_FILE.unlink()
         reset_ratings()
-        from .arena.runner import reset_arena
+        from arena.runner import reset_arena
         reset_arena()
         print("Cleared previous results and ELO ratings.")
 
     # ---- Arena mode ----
     if args.arena:
-        from .arena.runner import run_arena
+        from arena.runner import run_arena
         scenario = args.eval or "all"
         strat_names = None
         if args.strategies:
@@ -424,18 +424,18 @@ def main():
         print("BarterBench: competitive marketplace benchmark with ELO ratings")
         print()
         print("Benchmark mode (compare models):")
-        print("  python3 -m barter_eval --eval <scenario> --models <config>")
-        print("  python3 -m barter_eval --eval all --models haiku,opus --runs 3")
+        print("  python3 eval.py --eval <scenario> --models <config>")
+        print("  python3 eval.py --eval all --models haiku,opus --runs 3")
         print()
         print("Arena mode (compare prompt strategies across models):")
-        print("  python3 -m barter_eval --arena --eval all --runs 3")
-        print("  python3 -m barter_eval --arena --models haiku,sonnet,opus --eval all")
-        print("  python3 -m barter_eval --submit 'my_strat' 'Trade aggressively'")
+        print("  python3 eval.py --arena --eval all --runs 3")
+        print("  python3 eval.py --arena --models haiku,sonnet,opus --eval all")
+        print("  python3 eval.py --submit 'my_strat' 'Trade aggressively'")
         print()
         print("Other:")
-        print("  python3 -m barter_eval --elo      # View ELO ratings")
-        print("  python3 -m barter_eval --list     # List scenarios & strategies")
-        print("  python3 -m barter_eval --serve    # Dashboard")
+        print("  python3 eval.py --elo      # View ELO ratings")
+        print("  python3 eval.py --list     # List scenarios & strategies")
+        print("  python3 eval.py --serve    # Dashboard")
         return
 
     if not args.models:
