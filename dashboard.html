@@ -64,368 +64,85 @@ body {
 .subtitle {
   color: var(--text2);
   font-size: 0.8rem;
-  margin-bottom: 1.75rem;
-}
-
-.tabs {
-  display: flex;
-  gap: 0;
-  border-bottom: 1px solid var(--border);
-  margin-bottom: 1.5rem;
-}
-.tab {
-  font-family: var(--mono);
-  font-size: 0.75rem;
-  padding: 0.6rem 1.25rem;
-  background: none;
-  border: none;
-  color: var(--text2);
-  cursor: pointer;
-  position: relative;
-  letter-spacing: 0.02em;
-}
-.tab:hover { color: var(--text); }
-.tab.active { color: var(--text); }
-.tab.active::after {
-  content: '';
-  position: absolute;
-  bottom: -1px;
-  left: 0;
-  right: 0;
-  height: 1px;
-  background: var(--text);
-}
-.tab-content { display: none; }
-.tab-content.active { display: block; }
-
-.card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 1.25rem 1.5rem;
-  margin-bottom: 1rem;
-}
-.card-label {
-  font-family: var(--mono);
-  font-size: 0.65rem;
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--text3);
-  margin-bottom: 0.75rem;
-}
-
-.filters {
-  display: flex;
-  gap: 0.35rem;
-  margin-bottom: 0.75rem;
-  flex-wrap: wrap;
-}
-.filter-btn {
-  font-family: var(--mono);
-  font-size: 0.7rem;
-  padding: 0.2rem 0.6rem;
-  border: 1px solid var(--border);
-  border-radius: 5px;
-  background: transparent;
-  color: var(--text2);
-  cursor: pointer;
-  transition: all 0.15s;
-}
-.filter-btn:hover { border-color: var(--text3); color: var(--text); }
-.filter-btn.active {
-  background: var(--accent);
-  color: #ffffff;
-  border-color: var(--accent);
-}
-
-svg { width: 100%; display: block; }
-svg text { font-family: var(--mono); }
-
-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-family: var(--mono);
-  font-size: 0.75rem;
-}
-th {
-  text-align: left;
-  font-weight: 500;
-  color: var(--text3);
-  padding: 0.4rem 0.6rem;
-  border-bottom: 1px solid var(--border);
-  font-size: 0.65rem;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-th.r, td.r { text-align: right; }
-td {
-  padding: 0.45rem 0.6rem;
-  border-bottom: 1px solid var(--border-light);
-  color: var(--text);
-}
-tr:hover td { background: var(--surface2); }
-tr.clickable { cursor: pointer; }
-tr.clickable:hover td { background: #e5e7eb; }
-
-.tag {
-  display: inline-block;
-  padding: 0.1rem 0.45rem;
-  border-radius: 4px;
-  font-size: 0.7rem;
-}
-
-.stats-row {
-  display: flex;
-  gap: 1rem;
-  margin-bottom: 1rem;
-}
-.stat-card {
-  flex: 1;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 1rem 1.25rem;
-}
-.stat-card .val {
-  font-family: var(--mono);
-  font-size: 1.5rem;
-  font-weight: 600;
-  letter-spacing: -0.03em;
-}
-.stat-card .lbl {
-  font-size: 0.7rem;
-  color: var(--text3);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  margin-top: 0.15rem;
-}
-
-/* Replay */
-.arena {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 1.25rem 1.5rem;
-  margin-bottom: 1rem;
-}
-
-.agents-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
-  gap: 0.75rem;
   margin-bottom: 1.25rem;
 }
-.agent-card {
-  text-align: center;
-  padding: 0.6rem;
-  border-radius: 8px;
+
+/* ---- Market Canvas ---- */
+.market-wrapper {
+  position: relative;
+  background: #2d1b0e;
+  border-radius: 12px;
+  overflow: hidden;
   border: 1px solid var(--border);
-  background: var(--surface2);
+  margin-bottom: 1rem;
 }
-.agent-card .sprite {
-  width: 40px;
-  height: 40px;
+.market-wrapper canvas {
+  display: block;
+  width: 100%;
+  height: 420px;
+  cursor: default;
+}
+.market-toolbar {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: flex;
+  gap: 6px;
+  z-index: 10;
+}
+.market-toolbar button {
+  font-family: var(--mono);
+  font-size: 0.65rem;
+  padding: 4px 10px;
+  border: 1px solid rgba(255,255,255,0.25);
+  border-radius: 5px;
+  background: rgba(0,0,0,0.55);
+  color: #e5e7eb;
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+}
+.market-toolbar button:hover { background: rgba(0,0,0,0.75); color: #fff; }
+.market-toolbar button.active { background: rgba(220,38,38,0.8); border-color: rgba(220,38,38,0.9); color: #fff; }
+.market-status {
+  position: absolute;
+  top: 10px;
+  left: 12px;
+  font-family: var(--mono);
+  font-size: 0.65rem;
+  color: rgba(255,255,255,0.7);
+  z-index: 10;
+}
+.market-status .live-dot {
+  display: inline-block;
+  width: 7px; height: 7px;
   border-radius: 50%;
-  margin: 0 auto 0.3rem;
+  background: #dc2626;
+  margin-right: 4px;
+  animation: pulse 2s infinite;
+}
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+.market-legend {
+  position: absolute;
+  bottom: 10px;
+  left: 12px;
+  display: flex;
+  gap: 10px;
+  z-index: 10;
+}
+.market-legend .leg-item {
   display: flex;
   align-items: center;
-  justify-content: center;
-  font-size: 1.25rem;
-  border: 2px solid var(--border);
-}
-.agent-card .agent-name {
-  font-weight: 600;
-  font-size: 0.7rem;
-  margin-bottom: 0.1rem;
-}
-.agent-card .agent-model {
+  gap: 4px;
   font-family: var(--mono);
   font-size: 0.6rem;
-  color: var(--text2);
+  color: rgba(255,255,255,0.7);
 }
-.agent-card .agent-strat {
-  font-family: var(--mono);
-  font-size: 0.55rem;
-  font-weight: 600;
-  margin-bottom: 0.3rem;
-}
-.goal-bar {
-  height: 4px;
-  background: var(--border);
-  border-radius: 2px;
-  overflow: hidden;
-  margin-bottom: 0.2rem;
-}
-.goal-fill {
-  height: 100%;
-  border-radius: 2px;
-  transition: width 0.3s;
-}
-.goal-pct {
-  font-family: var(--mono);
-  font-size: 0.55rem;
-  color: var(--text3);
-}
-.inventory {
-  display: flex;
-  gap: 0.2rem;
-  justify-content: center;
-  flex-wrap: wrap;
-  margin-top: 0.25rem;
-}
-.inv-item {
-  font-family: var(--mono);
-  font-size: 0.55rem;
-  padding: 0.05rem 0.3rem;
-  border-radius: 3px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  white-space: nowrap;
-  color: var(--text2);
+.market-legend .leg-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
 }
 
-.order-book {
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 0.75rem 1rem;
-  margin-bottom: 1rem;
-  max-height: 200px;
-  overflow-y: auto;
-}
-.ob-label {
-  font-family: var(--mono);
-  font-size: 0.6rem;
-  color: var(--text3);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  margin-bottom: 0.4rem;
-}
-.ob-entry {
-  font-family: var(--mono);
-  font-size: 0.65rem;
-  color: var(--text2);
-  padding: 0.2rem 0;
-  border-bottom: 1px solid var(--border-light);
-}
-.ob-entry:last-child { border-bottom: none; }
-
-.replay-split {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1rem;
-  margin-bottom: 0.75rem;
-}
-@media (max-width: 700px) {
-  .replay-split { grid-template-columns: 1fr; }
-}
-
-.event-log {
-  max-height: 500px;
-  overflow-y: auto;
-  padding: 0.5rem 0;
-  scrollbar-width: thin;
-  scrollbar-color: var(--border) transparent;
-}
-.event {
-  display: flex;
-  gap: 0.5rem;
-  padding: 0.35rem 0.5rem;
-  margin-bottom: 0.3rem;
-  border-radius: 6px;
-  font-size: 0.75rem;
-  opacity: 0;
-  animation: fadeIn 0.25s forwards;
-}
-@keyframes fadeIn { to { opacity: 1; } }
-@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.6; } }
-.event .ev-round {
-  font-family: var(--mono);
-  font-size: 0.6rem;
-  color: var(--text3);
-  white-space: nowrap;
-  min-width: 2.5rem;
-}
-.event .ev-agent {
-  font-family: var(--mono);
-  font-size: 0.65rem;
-  font-weight: 600;
-  white-space: nowrap;
-  min-width: 5rem;
-}
-.event .ev-action {
-  font-family: var(--mono);
-  font-size: 0.6rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  white-space: nowrap;
-  min-width: 4.5rem;
-}
-.event .ev-detail {
-  font-size: 0.75rem;
-  color: var(--text2);
-  flex: 1;
-}
-.ev-post { color: var(--blue); }
-.ev-whisper { color: var(--purple); }
-.ev-accept { color: var(--green); }
-.ev-pass { color: var(--text3); }
-.ev-invalid { color: var(--red); }
-
-.event { cursor: pointer; }
-.event:hover { background: var(--surface2); }
-.event.selected { background: var(--surface2); border: 1px solid var(--border); }
-
-.reasoning-panel {
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 0.75rem 1rem;
-}
-.reasoning-panel .rp-label {
-  font-family: var(--mono);
-  font-size: 0.6rem;
-  color: var(--text3);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  margin-bottom: 0.4rem;
-}
-.reasoning-panel .rp-agent {
-  font-family: var(--mono);
-  font-size: 0.7rem;
-  font-weight: 600;
-  margin-bottom: 0.3rem;
-}
-.reasoning-panel .rp-text {
-  font-size: 0.75rem;
-  color: var(--text2);
-  line-height: 1.7;
-  max-height: 500px;
-  overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: var(--border) transparent;
-}
-.reasoning-panel .rp-text p { margin: 0 0 0.5em; }
-.reasoning-panel .rp-text strong { color: var(--text); }
-.reasoning-panel .rp-text code {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 3px;
-  padding: 0.1em 0.3em;
-  font-family: var(--mono);
-  font-size: 0.9em;
-}
-.reasoning-panel .rp-text ul, .reasoning-panel .rp-text ol {
-  margin: 0.3em 0 0.5em 1.2em;
-}
-.reasoning-panel .rp-text li { margin-bottom: 0.2em; }
-.reasoning-panel .rp-empty {
-  color: var(--text3);
-  font-style: italic;
-  font-size: 0.7rem;
-}
-
+/* ---- Controls Bar ---- */
 .controls {
   display: flex;
   align-items: center;
@@ -451,6 +168,141 @@ tr.clickable:hover td { background: #e5e7eb; }
   margin-left: auto;
 }
 
+/* ---- Content Grid ---- */
+.content-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+@media (max-width: 700px) { .content-grid { grid-template-columns: 1fr; } }
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1.25rem 1.5rem;
+}
+.card-label {
+  font-family: var(--mono);
+  font-size: 0.65rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text3);
+  margin-bottom: 0.75rem;
+}
+
+/* ---- Agents Grid ---- */
+.agents-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+.agent-card {
+  text-align: center;
+  padding: 0.6rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+}
+.agent-card .sprite {
+  width: 40px; height: 40px;
+  border-radius: 50%;
+  margin: 0 auto 0.3rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25rem;
+  border: 2px solid var(--border);
+}
+.agent-card .agent-name { font-weight: 600; font-size: 0.7rem; margin-bottom: 0.1rem; }
+.agent-card .agent-model { font-family: var(--mono); font-size: 0.6rem; color: var(--text2); }
+.agent-card .agent-strat { font-family: var(--mono); font-size: 0.55rem; font-weight: 600; margin-bottom: 0.3rem; }
+.goal-bar { height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; margin-bottom: 0.2rem; }
+.goal-fill { height: 100%; border-radius: 2px; transition: width 0.3s; }
+.goal-pct { font-family: var(--mono); font-size: 0.55rem; color: var(--text3); }
+.inventory { display: flex; gap: 0.2rem; justify-content: center; flex-wrap: wrap; margin-top: 0.25rem; }
+.inv-item {
+  font-family: var(--mono); font-size: 0.55rem;
+  padding: 0.05rem 0.3rem; border-radius: 3px;
+  background: var(--surface); border: 1px solid var(--border);
+  white-space: nowrap; color: var(--text2);
+}
+
+/* ---- Event Log ---- */
+.event-log {
+  max-height: 500px;
+  overflow-y: auto;
+  padding: 0.5rem 0;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+.event {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.35rem 0.5rem;
+  margin-bottom: 0.3rem;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  opacity: 0;
+  animation: fadeIn 0.25s forwards;
+  cursor: pointer;
+}
+@keyframes fadeIn { to { opacity: 1; } }
+.event:hover { background: var(--surface2); }
+.event.selected { background: var(--surface2); border: 1px solid var(--border); }
+.event .ev-round { font-family: var(--mono); font-size: 0.6rem; color: var(--text3); white-space: nowrap; min-width: 2.5rem; }
+.event .ev-agent { font-family: var(--mono); font-size: 0.65rem; font-weight: 600; white-space: nowrap; min-width: 5rem; }
+.event .ev-action { font-family: var(--mono); font-size: 0.6rem; font-weight: 600; text-transform: uppercase; white-space: nowrap; min-width: 4.5rem; }
+.event .ev-detail { font-size: 0.75rem; color: var(--text2); flex: 1; }
+.ev-post { color: var(--blue); }
+.ev-whisper { color: var(--purple); }
+.ev-accept { color: var(--green); }
+.ev-pass { color: var(--text3); }
+.ev-invalid { color: var(--red); }
+
+/* ---- Reasoning Panel ---- */
+.reasoning-panel {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+}
+.reasoning-panel .rp-label { font-family: var(--mono); font-size: 0.6rem; color: var(--text3); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.4rem; }
+.reasoning-panel .rp-agent { font-family: var(--mono); font-size: 0.7rem; font-weight: 600; margin-bottom: 0.3rem; }
+.reasoning-panel .rp-text { font-size: 0.75rem; color: var(--text2); line-height: 1.7; max-height: 500px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+.reasoning-panel .rp-text p { margin: 0 0 0.5em; }
+.reasoning-panel .rp-text strong { color: var(--text); }
+.reasoning-panel .rp-text code { background: var(--surface); border: 1px solid var(--border); border-radius: 3px; padding: 0.1em 0.3em; font-family: var(--mono); font-size: 0.9em; }
+.reasoning-panel .rp-text ul, .reasoning-panel .rp-text ol { margin: 0.3em 0 0.5em 1.2em; }
+.reasoning-panel .rp-text li { margin-bottom: 0.2em; }
+.reasoning-panel .rp-empty { color: var(--text3); font-style: italic; font-size: 0.7rem; }
+
+/* ---- Order Book ---- */
+.order-book {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  max-height: 200px;
+  overflow-y: auto;
+}
+.ob-label { font-family: var(--mono); font-size: 0.6rem; color: var(--text3); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.4rem; }
+.ob-entry { font-family: var(--mono); font-size: 0.65rem; color: var(--text2); padding: 0.2rem 0; border-bottom: 1px solid var(--border-light); }
+.ob-entry:last-child { border-bottom: none; }
+
+/* ---- Leaderboard ---- */
+table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 0.75rem; }
+th { text-align: left; font-weight: 500; color: var(--text3); padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--border); font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.06em; }
+th.r, td.r { text-align: right; }
+td { padding: 0.45rem 0.6rem; border-bottom: 1px solid var(--border-light); color: var(--text); }
+tr:hover td { background: var(--surface2); }
+.tag { display: inline-block; padding: 0.1rem 0.45rem; border-radius: 4px; font-size: 0.7rem; }
+
+/* ---- Summary ---- */
 .summary-bar {
   display: flex;
   gap: 1.5rem;
@@ -459,33 +311,23 @@ tr.clickable:hover td { background: #e5e7eb; }
   padding-top: 1rem;
   border-top: 1px solid var(--border);
 }
-.summary-bar .s-val {
-  font-family: var(--mono);
-  font-size: 1rem;
-  font-weight: 600;
-  text-align: center;
-}
-.summary-bar .s-lbl {
-  font-size: 0.6rem;
-  color: var(--text3);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  text-align: center;
-}
+.summary-bar .s-val { font-family: var(--mono); font-size: 1rem; font-weight: 600; text-align: center; }
+.summary-bar .s-lbl { font-size: 0.6rem; color: var(--text3); text-transform: uppercase; letter-spacing: 0.06em; text-align: center; }
 
-.empty-state {
-  color: var(--text3);
-  text-align: center;
-  padding: 3rem;
-  font-size: 0.8rem;
-}
+.empty-state { color: var(--text3); text-align: center; padding: 3rem; font-size: 0.8rem; }
 
-.run-list {
-  display: flex;
-  gap: 0.35rem;
-  flex-wrap: wrap;
-  margin-bottom: 1rem;
+.filters { display: flex; gap: 0.35rem; flex-wrap: wrap; }
+.filter-btn {
+  font-family: var(--mono); font-size: 0.7rem; padding: 0.2rem 0.6rem;
+  border: 1px solid var(--border); border-radius: 5px;
+  background: transparent; color: var(--text2); cursor: pointer; transition: all 0.15s;
 }
+.filter-btn:hover { border-color: var(--text3); color: var(--text); }
+.filter-btn.active { background: var(--accent); color: #ffffff; border-color: var(--accent); }
+svg text { font-family: var(--mono); }
+
+/* ---- Goal chart ---- */
+.goal-chart-wrapper { position: relative; height: 220px; }
 </style>
 </head>
 <body>
@@ -493,48 +335,24 @@ tr.clickable:hover td { background: #e5e7eb; }
 
 <div class="header">
   <h1>BarterBench</h1>
-  <span class="version">v1.0 elo</span>
+  <span class="version">v2.0 live</span>
 </div>
-<p class="subtitle">Competitive marketplace benchmark with ELO ratings</p>
+<p class="subtitle">Competitive marketplace benchmark &mdash; real-time trading arena</p>
 
-<div class="tabs">
-  <button class="tab active" onclick="switchTab('overview')">overview</button>
-  <button class="tab" onclick="switchTab('replays')">replays</button>
-</div>
-
-<!-- ==================== OVERVIEW TAB ==================== -->
-<div class="tab-content active" id="tab-overview">
-
-<div class="stats-row" id="statsRow"></div>
-
-<div class="card">
-  <div class="card-label">goal completion over runs</div>
-  <div class="filters" id="scenarioFilters"></div>
-  <svg id="chart" viewBox="0 0 940 280" preserveAspectRatio="xMidYMid meet"></svg>
+<!-- ==================== MARKET CANVAS ==================== -->
+<div class="market-wrapper">
+  <canvas id="marketCanvas"></canvas>
+  <div class="market-status" id="marketStatus">waiting for match...</div>
+  <div class="market-toolbar">
+    <button onclick="setSpeed(1)" id="speed1" class="active">1x</button>
+    <button onclick="setSpeed(2)" id="speed2">2x</button>
+    <button onclick="setSpeed(4)" id="speed4">4x</button>
+    <button onclick="restart()">restart</button>
+  </div>
+  <div class="market-legend" id="marketLegend"></div>
 </div>
 
-<div class="card">
-  <div class="card-label">elo rating over time</div>
-  <svg id="eloChart" viewBox="0 0 940 300" preserveAspectRatio="xMidYMid meet"></svg>
-</div>
-
-<div class="card">
-  <div class="card-label">leaderboard</div>
-  <table id="leaderboard"></table>
-</div>
-
-<div class="card">
-  <div class="card-label">run history</div>
-  <table id="history"></table>
-</div>
-
-</div>
-
-<!-- ==================== REPLAYS TAB ==================== -->
-<div class="tab-content" id="tab-replays">
-
-<div class="run-list" id="runSelector"></div>
-
+<!-- ==================== CONTROLS ==================== -->
 <div class="controls" id="replayControls">
   <button class="ctrl-btn" onclick="restart()">restart</button>
   <button class="ctrl-btn" onclick="stepBack()">back</button>
@@ -543,34 +361,85 @@ tr.clickable:hover td { background: #e5e7eb; }
   <span class="step-display" id="stepDisplay">0 / 0</span>
 </div>
 
-<div class="arena" id="arena">
-  <div class="agents-grid" id="agentsGrid"></div>
-  <div class="card" style="margin-bottom:0.75rem;padding:0.75rem 1rem">
-    <div class="card-label">goal completion over time</div>
-    <div style="position:relative;height:220px">
-      <canvas id="goalChart"></canvas>
-    </div>
-  </div>
-  <div class="order-book" id="orderBook">
-    <div class="ob-label">Order Book</div>
-    <div id="obEntries"><span style="color:var(--text3);font-size:0.7rem">empty</span></div>
-  </div>
-  <div class="replay-split">
+<!-- ==================== AGENT CARDS ==================== -->
+<div class="agents-grid" id="agentsGrid"></div>
+
+<!-- ==================== ORDER BOOK ==================== -->
+<div class="order-book" id="orderBook">
+  <div class="ob-label">Order Book</div>
+  <div id="obEntries"><span style="color:var(--text3);font-size:0.7rem">empty</span></div>
+</div>
+
+<!-- ==================== EVENT LOG + REASONING ==================== -->
+<div class="content-grid">
+  <div class="card">
+    <div class="card-label">event log</div>
     <div class="event-log" id="eventLog"></div>
-    <div class="reasoning-panel" id="reasoningPanel">
+  </div>
+  <div class="card">
+    <div class="reasoning-panel" id="reasoningPanel" style="border:none;padding:0;background:transparent">
       <div class="rp-label">Agent Reasoning</div>
       <div class="rp-agent" id="rpAgent"></div>
       <div class="rp-text" id="rpText"><span class="rp-empty">Click an event or step through the replay</span></div>
     </div>
   </div>
-  <div class="summary-bar" id="summary"></div>
 </div>
 
+<!-- ==================== GOAL CHART ==================== -->
+<div class="card" style="margin-bottom:1rem">
+  <div class="card-label">goal completion over time</div>
+  <div class="goal-chart-wrapper">
+    <canvas id="goalChart"></canvas>
+  </div>
+</div>
+
+<!-- ==================== LEADERBOARD ==================== -->
+<div class="card">
+  <div class="card-label">leaderboard</div>
+  <table id="leaderboard"></table>
+</div>
+
+<div class="summary-bar" id="summary"></div>
+
+<!-- ==================== ANALYTICS CHARTS ==================== -->
+<div style="margin-top:1.5rem;border-top:1px solid var(--border);padding-top:1.5rem">
+  <div class="card-label" style="margin-bottom:1rem">analytics across all runs</div>
+  <div class="filters" id="scenarioFilters" style="display:flex;gap:0.35rem;margin-bottom:1rem;flex-wrap:wrap"></div>
+
+  <div class="content-grid">
+    <div class="card">
+      <div class="card-label">goal completion per run</div>
+      <svg id="chartGoal" viewBox="0 0 460 260" preserveAspectRatio="xMidYMid meet" style="width:100%;display:block"></svg>
+    </div>
+    <div class="card">
+      <div class="card-label">elo rating over time</div>
+      <svg id="chartElo" viewBox="0 0 460 260" preserveAspectRatio="xMidYMid meet" style="width:100%;display:block"></svg>
+    </div>
+  </div>
+
+  <div class="content-grid">
+    <div class="card">
+      <div class="card-label">trades per run</div>
+      <svg id="chartTrades" viewBox="0 0 460 200" preserveAspectRatio="xMidYMid meet" style="width:100%;display:block"></svg>
+    </div>
+    <div class="card">
+      <div class="card-label">invalid action rate</div>
+      <svg id="chartInvalid" viewBox="0 0 460 200" preserveAspectRatio="xMidYMid meet" style="width:100%;display:block"></svg>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-label">run history</div>
+    <table id="history"></table>
+  </div>
 </div>
 
 </div><!-- /container -->
 
 <script>
+// ============================================================
+// CONSTANTS
+// ============================================================
 const COLORS = { haiku: '#2563eb', sonnet: '#059669', opus: '#7c3aed' };
 const ITEM_EMOJI = {
   apples:'\u{1F34E}',oranges:'\u{1F34A}',bananas:'\u{1F34C}',
@@ -586,363 +455,589 @@ const AGENT_EMOJI = [
   '\u{1F9D1}\u200D\u{1F373}','\u{1F469}\u200D\u{1F373}','\u{1F468}\u200D\u{1F373}',
   '\u{1F9D1}\u200D\u{1F3A8}',
 ];
+// Medieval character labels for the canvas
+const MEDIEVAL_ROLES = ['Merchant','Trader','Smith','Baker','Farmer','Weaver','Jeweller','Alchemist','Scribe','Herald'];
+
 function gc(m) {
-  // Check if m contains a model name for coloring
   for (const [model, color] of Object.entries(COLORS)) {
     if (m === model || m.endsWith(':' + model) || m.includes(':' + model)) return color;
   }
-  // Hash-based color for strategy names
   let h = 0;
   for (let i = 0; i < m.length; i++) h = m.charCodeAt(i) + ((h << 5) - h);
   return `hsl(${Math.abs(h) % 360}, 55%, 45%)`;
 }
 function getGoalCompletion(d) {
-  return d.strategy_goal_completion || getGoalCompletion(d) || {};
+  return d.strategy_goal_completion || d.model_goal_completion || {};
 }
 function itemStr(items) {
   return Object.entries(items).filter(([,v])=>v>0).map(([k,v])=>`${ITEM_EMOJI[k]||''} ${v} ${k}`).join(', ') || 'nothing';
 }
-
-let allData = [], eloRatings = {}, matchLog = [], activeScenario = 'all';
-let currentRun = null, currentStep = 0, inventories = [], orderBook = [], playing = false;
-let goalHistory = []; // [{step, completions: [per-agent completion]}]
-
-// ---- Data ----
-async function loadData() {
-  // Load both benchmark and arena results
-  let benchData = [], arenaData = [];
-  try {
-    const r = await fetch('results.json');
-    benchData = (await r.json()).filter(d => !d.error);
-  } catch { benchData = []; }
-  try {
-    const r = await fetch('arena/results.json');
-    arenaData = (await r.json()).filter(d => !d.error);
-  } catch { arenaData = []; }
-  allData = [...benchData, ...arenaData];
-
-  // Merge ELO ratings from both sources
-  eloRatings = {};
-  try {
-    const r2 = await fetch('elo_ratings.json');
-    Object.assign(eloRatings, await r2.json());
-  } catch {}
-  try {
-    const r2 = await fetch('arena/elo_ratings.json');
-    Object.assign(eloRatings, await r2.json());
-  } catch {}
-
-  // Merge match logs
-  let benchLog = [], arenaLog = [];
-  try {
-    const r3 = await fetch('match_log.json');
-    benchLog = await r3.json();
-  } catch {}
-  try {
-    const r3 = await fetch('arena/match_log.json');
-    arenaLog = await r3.json();
-  } catch {}
-  matchLog = [...benchLog, ...arenaLog];
-
-  renderOverview();
-  buildRunSelector();
+function itemStrShort(items) {
+  return Object.entries(items).filter(([,v])=>v>0).map(([k,v])=>`${v}${ITEM_EMOJI[k]||k}`).join(' ');
 }
 
-// ---- Tabs ----
-function switchTab(name) {
-  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.textContent === name));
-  document.querySelectorAll('.tab-content').forEach(t => t.classList.toggle('active', t.id === `tab-${name}`));
-  if (name === 'replays' && allData.length && !currentRun) selectRun(0);
-}
+// ============================================================
+// STATE
+// ============================================================
+let allData = [], eloRatings = {}, matchLog = [];
+let currentRun = null, currentStep = 0, inventories = [], orderBookState = [], playing = false;
+let goalHistory = [];
+let goalChartInstance = null;
+let playSpeed = 1;
 
-// ---- Overview ----
-function filtered() {
-  return activeScenario === 'all' ? allData : allData.filter(d => d.scenario === activeScenario);
-}
-
-function renderOverview() {
-  renderStats();
-  renderFilters();
-  renderChart();
-  renderEloChart();
-  renderLeaderboard();
-  renderHistory();
-}
-
-function renderStats() {
-  const d = allData;
-  const el = document.getElementById('statsRow');
-  if (!d.length) { el.innerHTML = ''; return; }
-  const models = new Set();
-  d.forEach(r => {
-    const mgc = r.model_goal_completion || {};
-    Object.keys(mgc).forEach(m => models.add(m));
-  });
-  const avgGoal = d.reduce((a,x) => a + (x.avg_goal_completion || 0), 0) / d.length;
-  const avgTrades = d.reduce((a,x) => a + (x.num_trades || 0), 0) / d.length;
-  const topElo = Object.entries(eloRatings).sort((a,b) => b[1]-a[1]);
-  const topEloStr = topElo.length ? `${topElo[0][0]} ${Math.round(topElo[0][1])}` : '--';
-  el.innerHTML = `
-    <div class="stat-card"><div class="val">${d.length}</div><div class="lbl">matches</div></div>
-    <div class="stat-card"><div class="val">${models.size}</div><div class="lbl">models</div></div>
-    <div class="stat-card"><div class="val">${topEloStr}</div><div class="lbl">top elo</div></div>
-    <div class="stat-card"><div class="val">${(avgGoal*100).toFixed(0)}%</div><div class="lbl">avg goal</div></div>`;
-}
-
-function renderFilters() {
-  const scenarios = ['all', ...new Set(allData.map(d => d.scenario))];
-  const el = document.getElementById('scenarioFilters');
-  el.innerHTML = '';
-  scenarios.forEach(s => {
-    const btn = document.createElement('button');
-    btn.className = 'filter-btn' + (s === activeScenario ? ' active' : '');
-    btn.textContent = s;
-    btn.onclick = () => { activeScenario = s; renderOverview(); };
-    el.appendChild(btn);
-  });
-}
-
-function renderChart() {
-  const data = filtered();
-  const svg = document.getElementById('chart');
-  svg.innerHTML = '';
-  if (!data.length) {
-    svg.innerHTML = '<text x="470" y="140" text-anchor="middle" fill="#9ca3af" font-size="13">no data yet</text>';
-    return;
+// ============================================================
+// 2D MARKET SCENE
+// ============================================================
+class MarketScene {
+  constructor(canvas) {
+    this.canvas = canvas;
+    this.ctx = canvas.getContext('2d');
+    this.agents = [];
+    this.stalls = [];
+    this.particles = [];
+    this.speechBubbles = [];
+    this.eventQueue = [];
+    this.eventIdx = 0;
+    this.eventTimer = 0;
+    this.running = false;
+    this.time = 0;
+    this.groundTiles = [];
+    this.centreX = 0;
+    this.centreY = 0;
+    this.W = 0;
+    this.H = 0;
+    this._resizeCanvas();
+    this._generateGround();
+    this._buildStalls();
+    this._raf = null;
+    this._lastTime = 0;
+    this.start();
   }
 
-  const W=940,H=280,p={t:16,r:24,b:36,l:50};
-  const pw=W-p.l-p.r, ph=H-p.t-p.b;
-  const xS = i => p.l + (i / Math.max(data.length-1, 1)) * pw;
-  const yS = v => p.t + ph - v * ph;
-
-  // Grid
-  for(let i=0;i<=4;i++){
-    const y=p.t+(i/4)*ph, v=1-(i/4);
-    svg.innerHTML+=`<line x1="${p.l}" y1="${y}" x2="${W-p.r}" y2="${y}" stroke="#e5e7eb" stroke-width="1"/>`;
-    svg.innerHTML+=`<text x="${p.l-6}" y="${y+3}" text-anchor="end" fill="#9ca3af" font-size="9">${v.toFixed(2)}</text>`;
-  }
-  svg.innerHTML+=`<text x="${p.l+pw/2}" y="${H-4}" text-anchor="middle" fill="#9ca3af" font-size="10">run</text>`;
-
-  // Points — one per model per run
-  data.forEach((d,i) => {
-    const cx = xS(i);
-    const mgc = getGoalCompletion(d) || {};
-    Object.entries(mgc).forEach(([model, score]) => {
-      const cy = yS(score);
-      const c = gc(model);
-      const t = `${d.scenario}: ${model} = ${(score*100).toFixed(0)}% goal`;
-      svg.innerHTML += `<circle cx="${cx}" cy="${cy}" r="5" fill="${c}" opacity="0.85"><title>${t}</title></circle>`;
-    });
-  });
-
-  // Legend
-  const models = [...new Set(allData.flatMap(d => Object.keys(getGoalCompletion(d) || {})))];
-  models.forEach((m,i) => {
-    const lx = p.l + i * 80;
-    svg.innerHTML += `<circle cx="${lx}" cy="${H-20}" r="3.5" fill="${gc(m)}"/>`;
-    svg.innerHTML += `<text x="${lx+7}" y="${H-17}" fill="#6b7280" font-size="9">${m}</text>`;
-  });
-}
-
-function renderEloChart() {
-  const svg = document.getElementById('eloChart');
-  svg.innerHTML = '';
-  if (!matchLog.length) {
-    svg.innerHTML = '<text x="470" y="150" text-anchor="middle" fill="#9ca3af" font-size="13">no matches yet</text>';
-    return;
+  _resizeCanvas() {
+    const rect = this.canvas.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    this.W = rect.width;
+    this.H = rect.height;
+    this.canvas.width = this.W * dpr;
+    this.canvas.height = this.H * dpr;
+    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    this.centreX = this.W / 2;
+    this.centreY = this.H / 2;
   }
 
-  // Build ELO history: for each contestant, track rating after each match
-  const history = {};  // contestant -> [{match_idx, elo}]
-  matchLog.forEach((m, idx) => {
-    const after = m.elo_after || {};
-    Object.entries(after).forEach(([name, elo]) => {
-      if (!history[name]) history[name] = [];
-      history[name].push({ idx, elo });
-    });
-  });
-
-  const contestants = Object.keys(history);
-  if (!contestants.length) {
-    svg.innerHTML = '<text x="470" y="150" text-anchor="middle" fill="#9ca3af" font-size="13">no elo data</text>';
-    return;
-  }
-
-  const W = 940, H = 300, p = { t: 20, r: 140, b: 36, l: 50 };
-  const pw = W - p.l - p.r, ph = H - p.t - p.b;
-
-  // Find ELO range
-  let minElo = 1500, maxElo = 1500;
-  contestants.forEach(c => {
-    history[c].forEach(h => {
-      minElo = Math.min(minElo, h.elo);
-      maxElo = Math.max(maxElo, h.elo);
-    });
-  });
-  const eloPad = Math.max((maxElo - minElo) * 0.1, 20);
-  minElo = Math.floor((minElo - eloPad) / 10) * 10;
-  maxElo = Math.ceil((maxElo + eloPad) / 10) * 10;
-
-  const totalMatches = matchLog.length;
-  const xS = i => p.l + (i / Math.max(totalMatches - 1, 1)) * pw;
-  const yS = v => p.t + ph - ((v - minElo) / (maxElo - minElo)) * ph;
-
-  // Grid lines
-  const eloStep = Math.max(Math.round((maxElo - minElo) / 5 / 10) * 10, 10);
-  for (let v = Math.ceil(minElo / eloStep) * eloStep; v <= maxElo; v += eloStep) {
-    const y = yS(v);
-    svg.innerHTML += `<line x1="${p.l}" y1="${y}" x2="${W-p.r}" y2="${y}" stroke="#e5e7eb" stroke-width="1"/>`;
-    svg.innerHTML += `<text x="${p.l-6}" y="${y+3}" text-anchor="end" fill="#9ca3af" font-size="9">${v}</text>`;
-  }
-  // 1500 baseline
-  const y1500 = yS(1500);
-  svg.innerHTML += `<line x1="${p.l}" y1="${y1500}" x2="${W-p.r}" y2="${y1500}" stroke="#d1d5db" stroke-width="1" stroke-dasharray="4,3"/>`;
-
-  svg.innerHTML += `<text x="${p.l+pw/2}" y="${H-4}" text-anchor="middle" fill="#9ca3af" font-size="10">match</text>`;
-
-  // Draw lines for each contestant
-  contestants.forEach(c => {
-    const pts = history[c];
-    const color = gc(c);
-    if (pts.length < 2) {
-      const pt = pts[0];
-      svg.innerHTML += `<circle cx="${xS(pt.idx)}" cy="${yS(pt.elo)}" r="4" fill="${color}" opacity="0.85"><title>${c}: ${pt.elo.toFixed(0)}</title></circle>`;
-      return;
-    }
-
-    // Draw path
-    const pathParts = pts.map((pt, i) => `${i === 0 ? 'M' : 'L'}${xS(pt.idx).toFixed(1)},${yS(pt.elo).toFixed(1)}`);
-    svg.innerHTML += `<path d="${pathParts.join(' ')}" fill="none" stroke="${color}" stroke-width="2" opacity="0.8"/>`;
-
-    // End dot with current ELO
-    const last = pts[pts.length - 1];
-    svg.innerHTML += `<circle cx="${xS(last.idx)}" cy="${yS(last.elo)}" r="4" fill="${color}"><title>${c}: ${last.elo.toFixed(0)}</title></circle>`;
-  });
-
-  // Legend (right side, sorted by final ELO)
-  const sorted = contestants.map(c => ({
-    name: c,
-    elo: history[c][history[c].length - 1].elo
-  })).sort((a, b) => b.elo - a.elo);
-
-  sorted.forEach((s, i) => {
-    const ly = p.t + 8 + i * 16;
-    const lx = W - p.r + 10;
-    svg.innerHTML += `<circle cx="${lx}" cy="${ly}" r="3.5" fill="${gc(s.name)}"/>`;
-    svg.innerHTML += `<text x="${lx+8}" y="${ly+3.5}" fill="#6b7280" font-size="9">${s.name} (${s.elo.toFixed(0)})</text>`;
-  });
-}
-
-function renderLeaderboard() {
-  const data = filtered(), el = document.getElementById('leaderboard');
-  if (!data.length) { el.innerHTML = '<tr><td class="empty-state" colspan="6">no data</td></tr>'; return; }
-
-  const s = {};
-  data.forEach(d => {
-    const mgc = getGoalCompletion(d) || {};
-    Object.entries(mgc).forEach(([model, score]) => {
-      if (!s[model]) s[model] = { scores: [], trades: [], invalids: [] };
-      s[model].scores.push(score);
-      s[model].trades.push(d.num_trades || 0);
-      s[model].invalids.push(d.invalid_rate || 0);
-    });
-  });
-
-  // Count wins/losses/draws from match log
-  function wld(model) {
-    let w=0, l=0, d=0;
-    matchLog.forEach(m => {
-      if (m.model_a !== model && m.model_b !== model) return;
-      if (m.winner === 'draw') d++;
-      else if (m.winner === model) w++;
-      else l++;
-    });
-    return {w,l,d};
-  }
-
-  const avg = a => a.reduce((x,y) => x+y, 0) / a.length;
-  const rows = Object.entries(s).map(([m,v]) => ({
-    m, elo: eloRatings[m] || 1500, sc: avg(v.scores), tr: avg(v.trades),
-    inv: avg(v.invalids)*100, n: v.scores.length, ...wld(m)
-  })).sort((a,b) => b.elo - a.elo);
-
-  // Parse contestant name into strategy + model columns
-  function parseContestant(name) {
-    const parts = name.split(':');
-    if (parts.length === 2) return { strategy: parts[0], model: parts[1] };
-    return { strategy: '', model: name };
-  }
-
-  const hasStrategies = rows.some(r => r.m.includes(':'));
-  const stratHeader = hasStrategies ? '<th>strategy</th><th>model</th>' : '<th>contestant</th>';
-  el.innerHTML = `<thead><tr>${stratHeader}<th class="r">elo</th><th class="r">W-L-D</th><th class="r">goal %</th><th class="r">invalid %</th><th class="r">matches</th></tr></thead>
-  <tbody>${rows.map(r => {
-    const p = parseContestant(r.m);
-    const nameCell = hasStrategies
-      ? `<td><span class="tag" style="background:${gc(r.m)}18;color:${gc(r.m)}">${p.strategy}</span></td><td><span class="tag" style="background:${gc(p.model)}18;color:${gc(p.model)}">${p.model}</span></td>`
-      : `<td><span class="tag" style="background:${gc(r.m)}18;color:${gc(r.m)}">${r.m}</span></td>`;
-    return `<tr>
-    ${nameCell}
-    <td class="r" style="font-weight:600">${Math.round(r.elo)}</td>
-    <td class="r">${r.w}-${r.l}-${r.d}</td>
-    <td class="r">${(r.sc*100).toFixed(1)}%</td>
-    <td class="r">${r.inv.toFixed(1)}%</td>
-    <td class="r">${r.n}</td></tr>`;
-  }).join('')}</tbody>`;
-}
-
-function renderHistory() {
-  const data = filtered(), el = document.getElementById('history');
-  if (!data.length) { el.innerHTML = '<tr><td class="empty-state" colspan="6">no data</td></tr>'; return; }
-
-  el.innerHTML = `<thead><tr><th>#</th><th>scenario</th><th>result</th><th class="r">goal %</th><th class="r">trades</th><th class="r">time</th></tr></thead>
-  <tbody>${data.map((d,i) => {
-    const mgc = getGoalCompletion(d) || {};
-    const models = Object.keys(mgc);
-    let resultStr = '';
-    if (models.length === 2) {
-      const [a, b] = models;
-      const sa = mgc[a], sb = mgc[b];
-      const diff = Math.abs(sa - sb);
-      if (diff < 0.02) {
-        resultStr = `<span class="tag" style="background:#fbbf2418;color:#fbbf24">draw</span> `;
-      } else {
-        const winner = sa > sb ? a : b;
-        resultStr = `<span class="tag" style="background:${gc(winner)}18;color:${gc(winner)}">${winner} wins</span> `;
+  _generateGround() {
+    // Cobblestone tiles
+    this.groundTiles = [];
+    const tileSize = 24;
+    for (let y = 0; y < this.H + tileSize; y += tileSize) {
+      for (let x = 0; x < this.W + tileSize; x += tileSize) {
+        const hue = 28 + Math.random() * 12;
+        const light = 38 + Math.random() * 12;
+        this.groundTiles.push({ x, y, size: tileSize, color: `hsl(${hue}, 30%, ${light}%)` });
       }
     }
-    resultStr += Object.entries(mgc).map(([m,s]) =>
-      `<span class="tag" style="background:${gc(m)}18;color:${gc(m)}">${m}: ${(s*100).toFixed(0)}%</span>`
-    ).join(' ');
-    return `<tr class="clickable" onclick="openReplay(${allData.indexOf(d)})">
-    <td>${d.run_id}</td><td>${d.scenario}</td><td>${resultStr}</td>
-    <td class="r">${((d.avg_goal_completion||0)*100).toFixed(0)}%</td>
-    <td class="r">${d.num_trades||0}</td>
-    <td class="r">${(d.elapsed_seconds||0).toFixed(1)}s</td></tr>`;
-  }).join('')}</tbody>`;
+  }
+
+  _buildStalls() {
+    // Market stalls around the perimeter
+    const items = Object.keys(ITEM_EMOJI);
+    const stallCount = 6;
+    this.stalls = [];
+    const margin = 50;
+    const positions = [
+      // top row
+      { x: this.W * 0.15, y: margin, aw: 70, ah: 35 },
+      { x: this.W * 0.5, y: margin, aw: 70, ah: 35 },
+      { x: this.W * 0.85, y: margin, aw: 70, ah: 35 },
+      // bottom row
+      { x: this.W * 0.15, y: this.H - margin - 35, aw: 70, ah: 35 },
+      { x: this.W * 0.5, y: this.H - margin - 35, aw: 70, ah: 35 },
+      { x: this.W * 0.85, y: this.H - margin - 35, aw: 70, ah: 35 },
+    ];
+    const awningColors = ['#8b2500', '#1a5e1a', '#1a3a6b', '#6b3a1a', '#4a1a5e', '#5e4a1a'];
+    for (let i = 0; i < stallCount; i++) {
+      const p = positions[i];
+      this.stalls.push({
+        x: p.x - p.aw/2,
+        y: p.y,
+        w: p.aw,
+        h: p.ah,
+        color: awningColors[i % awningColors.length],
+        item: items[i % items.length],
+      });
+    }
+  }
+
+  loadRun(runData) {
+    if (!runData || !runData.history) return;
+    const n = runData.model_assignments ? runData.model_assignments.length : 0;
+    const strats = runData.strategy_assignments || [];
+
+    // Place agents in a circle around the centre
+    this.agents = [];
+    const radius = Math.min(this.W, this.H) * 0.28;
+    for (let i = 0; i < n; i++) {
+      const angle = (i / n) * Math.PI * 2 - Math.PI / 2;
+      const hx = this.centreX + Math.cos(angle) * radius;
+      const hy = this.centreY + Math.sin(angle) * radius;
+      const model = runData.model_assignments[i];
+      const strat = strats[i] || '';
+      const contestant = strat && strat !== model ? strat : model;
+      this.agents.push({
+        idx: i,
+        x: hx, y: hy,
+        homeX: hx, homeY: hy,
+        targetX: hx, targetY: hy,
+        color: gc(contestant),
+        modelColor: gc(model),
+        model: model,
+        label: `T${i}`,
+        role: MEDIEVAL_ROLES[i % MEDIEVAL_ROLES.length],
+        state: 'idle', // idle, walking, talking
+        bobPhase: Math.random() * Math.PI * 2,
+        bubbleTimer: 0,
+        bubble: null,
+      });
+    }
+
+    // Build event queue from history
+    this.eventQueue = runData.history.map((h, i) => ({ ...h, _idx: i }));
+    this.eventIdx = 0;
+    this.eventTimer = 0;
+    this.speechBubbles = [];
+    this.particles = [];
+
+    this._updateLegend();
+    this._updateStatus(runData);
+  }
+
+  _updateLegend() {
+    const el = document.getElementById('marketLegend');
+    if (!el) return;
+    const models = [...new Set(this.agents.map(a => a.model))];
+    el.innerHTML = models.map(m =>
+      `<span class="leg-item"><span class="leg-dot" style="background:${gc(m)}"></span>${m}</span>`
+    ).join('');
+    // Add bubble legend
+    el.innerHTML += `
+      <span class="leg-item"><span class="leg-dot" style="background:#d97706"></span>shout</span>
+      <span class="leg-item"><span class="leg-dot" style="background:#7c3aed"></span>whisper</span>
+      <span class="leg-item"><span class="leg-dot" style="background:#059669"></span>trade</span>
+    `;
+  }
+
+  _updateStatus(runData) {
+    const el = document.getElementById('marketStatus');
+    if (!el) return;
+    if (runData && runData._live) {
+      el.innerHTML = `<span class="live-dot"></span>LIVE &mdash; ${runData.scenario || 'match'}`;
+    } else if (runData) {
+      el.textContent = `replay &mdash; ${runData.scenario || 'match'} #${runData.run_id || ''}`;
+    } else {
+      el.textContent = 'waiting for match...';
+    }
+  }
+
+  // Advance one event from the queue — called by external step controls
+  advanceEvent(historyEntry) {
+    if (!historyEntry) return;
+    const h = historyEntry;
+    const agentIdx = h.agent;
+    const agent = this.agents[agentIdx];
+    if (!agent) return;
+
+    if (h.action === 'post_offer' && !h.invalid) {
+      // Walk to centre (public shout)
+      agent.targetX = this.centreX + (Math.random() - 0.5) * 30;
+      agent.targetY = this.centreY + (Math.random() - 0.5) * 30;
+      agent.state = 'walking';
+      agent.bubble = {
+        text: itemStrShort(h.give || {}) + ' \u2192 ' + itemStrShort(h.want || {}),
+        color: '#d97706',
+        bgColor: 'rgba(217,119,6,0.15)',
+        borderColor: 'rgba(217,119,6,0.5)',
+        timer: 3,
+        type: 'shout',
+      };
+    } else if (h.action === 'private_offer' && !h.invalid) {
+      // Walk to target agent (whisper)
+      const target = this.agents[h.target_agent];
+      if (target) {
+        agent.targetX = target.homeX + (agentIdx < h.target_agent ? -25 : 25);
+        agent.targetY = target.homeY;
+      }
+      agent.state = 'walking';
+      agent.bubble = {
+        text: '\u{1F90F} ' + itemStrShort(h.give || {}) + ' \u2192 ' + itemStrShort(h.want || {}),
+        color: '#7c3aed',
+        bgColor: 'rgba(124,58,237,0.15)',
+        borderColor: 'rgba(124,58,237,0.5)',
+        timer: 3,
+        type: 'whisper',
+      };
+    } else if (h.action === 'accept_offer' && !h.invalid && h.trade) {
+      // Walk to poster
+      const poster = this.agents[h.trade.poster];
+      if (poster) {
+        agent.targetX = poster.x + (agentIdx < h.trade.poster ? -25 : 25);
+        agent.targetY = poster.y;
+      }
+      agent.state = 'walking';
+      agent.bubble = {
+        text: '\u2714 trade!',
+        color: '#059669',
+        bgColor: 'rgba(5,150,105,0.15)',
+        borderColor: 'rgba(5,150,105,0.5)',
+        timer: 3,
+        type: 'accept',
+      };
+      // Give poster a bubble too
+      if (poster) {
+        poster.bubble = {
+          text: '\u{1F91D}',
+          color: '#059669',
+          bgColor: 'rgba(5,150,105,0.15)',
+          borderColor: 'rgba(5,150,105,0.5)',
+          timer: 3,
+          type: 'accept',
+        };
+      }
+      // Spawn trade particles
+      if (poster) {
+        this._spawnTradeParticles(agent, poster);
+      }
+    } else if (h.action === 'pass') {
+      agent.bubble = {
+        text: '...',
+        color: '#9ca3af',
+        bgColor: 'rgba(156,163,175,0.12)',
+        borderColor: 'rgba(156,163,175,0.3)',
+        timer: 1.5,
+        type: 'pass',
+      };
+    } else if (h.invalid) {
+      agent.bubble = {
+        text: '\u274C invalid',
+        color: '#dc2626',
+        bgColor: 'rgba(220,38,38,0.12)',
+        borderColor: 'rgba(220,38,38,0.4)',
+        timer: 2,
+        type: 'invalid',
+      };
+    }
+  }
+
+  _spawnTradeParticles(a, b) {
+    const count = 8;
+    for (let i = 0; i < count; i++) {
+      this.particles.push({
+        x: (a.x + b.x) / 2 + (Math.random() - 0.5) * 20,
+        y: (a.y + b.y) / 2 + (Math.random() - 0.5) * 20,
+        vx: (Math.random() - 0.5) * 40,
+        vy: (Math.random() - 0.5) * 40 - 20,
+        life: 1.0,
+        color: Math.random() > 0.5 ? a.color : b.color,
+        size: 2 + Math.random() * 3,
+      });
+    }
+  }
+
+  start() {
+    this.running = true;
+    this._lastTime = performance.now();
+    this._tick();
+  }
+
+  stop() {
+    this.running = false;
+    if (this._raf) cancelAnimationFrame(this._raf);
+  }
+
+  _tick() {
+    if (!this.running) return;
+    const now = performance.now();
+    const dt = Math.min((now - this._lastTime) / 1000, 0.05);
+    this._lastTime = now;
+    this.time += dt;
+    this._update(dt);
+    this._draw();
+    this._raf = requestAnimationFrame(() => this._tick());
+  }
+
+  _update(dt) {
+    // Update agents
+    for (const a of this.agents) {
+      a.bobPhase += dt * 2.5;
+
+      // Idle wandering: pick a new nearby target periodically
+      if (a.state === 'idle') {
+        if (!a.wanderTimer) a.wanderTimer = 1 + Math.random() * 3;
+        a.wanderTimer -= dt;
+        if (a.wanderTimer <= 0) {
+          a.wanderTimer = 2 + Math.random() * 4;
+          const wanderRadius = 35;
+          a.targetX = a.homeX + (Math.random() - 0.5) * wanderRadius * 2;
+          a.targetY = a.homeY + (Math.random() - 0.5) * wanderRadius * 2;
+          // Clamp to canvas
+          a.targetX = Math.max(30, Math.min(this.W - 30, a.targetX));
+          a.targetY = Math.max(30, Math.min(this.H - 30, a.targetY));
+        }
+      }
+
+      // Move towards target
+      const dx = a.targetX - a.x;
+      const dy = a.targetY - a.y;
+      const dist = Math.sqrt(dx*dx + dy*dy);
+
+      if (dist > 2) {
+        const speed = a.state === 'idle' ? 25 : 120; // slow wander vs purposeful walk
+        const step = Math.min(speed * dt, dist);
+        a.x += (dx / dist) * step;
+        a.y += (dy / dist) * step;
+      } else {
+        if (a.state === 'walking') {
+          a.state = 'talking';
+        }
+        // Return to idle when done talking
+        if (a.state === 'talking' && (!a.bubble || a.bubble.timer <= 0)) {
+          a.state = 'idle';
+          a.targetX = a.homeX;
+          a.targetY = a.homeY;
+          a.wanderTimer = 1 + Math.random() * 2;
+        }
+      }
+
+      // Bubble timer
+      if (a.bubble) {
+        a.bubble.timer -= dt;
+        if (a.bubble.timer <= 0) {
+          a.bubble = null;
+        }
+      }
+    }
+
+    // Update particles
+    for (const p of this.particles) {
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.vy += 50 * dt; // gravity
+      p.life -= dt * 1.2;
+    }
+    this.particles = this.particles.filter(p => p.life > 0);
+  }
+
+  _draw() {
+    const ctx = this.ctx;
+    const W = this.W, H = this.H;
+
+    // Ground
+    for (const t of this.groundTiles) {
+      ctx.fillStyle = t.color;
+      ctx.fillRect(t.x, t.y, t.size - 1, t.size - 1);
+    }
+
+    // Darker inner area (market square)
+    const sqX = W * 0.1, sqY = H * 0.15, sqW = W * 0.8, sqH = H * 0.7;
+    ctx.fillStyle = 'rgba(0,0,0,0.08)';
+    ctx.beginPath();
+    ctx.roundRect(sqX, sqY, sqW, sqH, 8);
+    ctx.fill();
+
+    // Market cross in centre
+    ctx.fillStyle = 'hsl(35, 25%, 55%)';
+    ctx.beginPath();
+    ctx.arc(this.centreX, this.centreY, 14, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = 'hsl(35, 20%, 70%)';
+    ctx.beginPath();
+    ctx.arc(this.centreX, this.centreY, 8, 0, Math.PI * 2);
+    ctx.fill();
+    // Cross lines
+    ctx.strokeStyle = 'hsl(35, 25%, 50%)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(this.centreX - 10, this.centreY);
+    ctx.lineTo(this.centreX + 10, this.centreY);
+    ctx.moveTo(this.centreX, this.centreY - 10);
+    ctx.lineTo(this.centreX, this.centreY + 10);
+    ctx.stroke();
+
+    // Stalls
+    for (const s of this.stalls) {
+      // Wooden base
+      ctx.fillStyle = 'hsl(30, 40%, 35%)';
+      ctx.fillRect(s.x, s.y, s.w, s.h);
+      ctx.strokeStyle = 'hsl(30, 30%, 25%)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(s.x, s.y, s.w, s.h);
+      // Awning
+      ctx.fillStyle = s.color;
+      ctx.beginPath();
+      ctx.moveTo(s.x - 5, s.y);
+      ctx.lineTo(s.x + s.w + 5, s.y);
+      ctx.lineTo(s.x + s.w, s.y - 12);
+      ctx.lineTo(s.x, s.y - 12);
+      ctx.closePath();
+      ctx.fill();
+      // Item emoji
+      ctx.font = '16px serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(ITEM_EMOJI[s.item] || '', s.x + s.w/2, s.y + s.h/2 + 5);
+    }
+
+    // Agent shadows
+    for (const a of this.agents) {
+      ctx.fillStyle = 'rgba(0,0,0,0.15)';
+      ctx.beginPath();
+      ctx.ellipse(a.x, a.y + 14, 10, 5, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Agents
+    for (const a of this.agents) {
+      const bob = Math.sin(a.bobPhase) * 1.5;
+      const ay = a.y + bob;
+
+      // Body (pawn shape)
+      ctx.fillStyle = a.color;
+      ctx.beginPath();
+      ctx.arc(a.x, ay - 4, 10, 0, Math.PI * 2);
+      ctx.fill();
+      // Body lower
+      ctx.beginPath();
+      ctx.moveTo(a.x - 8, ay + 2);
+      ctx.quadraticCurveTo(a.x, ay + 16, a.x + 8, ay + 2);
+      ctx.fill();
+      // Head
+      ctx.fillStyle = '#f5deb3'; // wheat skin
+      ctx.beginPath();
+      ctx.arc(a.x, ay - 12, 6, 0, Math.PI * 2);
+      ctx.fill();
+      // Eyes
+      ctx.fillStyle = '#333';
+      ctx.beginPath();
+      ctx.arc(a.x - 2, ay - 13, 1, 0, Math.PI * 2);
+      ctx.arc(a.x + 2, ay - 13, 1, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Label below
+      ctx.font = 'bold 9px ' + getComputedStyle(document.body).getPropertyValue('--mono');
+      ctx.textAlign = 'center';
+      ctx.fillStyle = 'rgba(255,255,255,0.85)';
+      ctx.fillText(a.label, a.x, ay + 26);
+
+      // Speech bubble
+      if (a.bubble) {
+        this._drawBubble(ctx, a.x, ay - 28, a.bubble);
+      }
+    }
+
+    // Particles
+    for (const p of this.particles) {
+      ctx.globalAlpha = p.life;
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  _drawBubble(ctx, x, y, bubble) {
+    const text = bubble.text;
+    ctx.font = '10px ' + getComputedStyle(document.body).getPropertyValue('--mono');
+    const metrics = ctx.measureText(text);
+    const tw = metrics.width;
+    const bw = tw + 16;
+    const bh = 22;
+    const bx = x - bw/2;
+    const by = y - bh - 4;
+
+    // Fade based on remaining time
+    const alpha = Math.min(bubble.timer / 0.5, 1);
+    ctx.globalAlpha = alpha;
+
+    // Background
+    ctx.fillStyle = bubble.bgColor;
+    ctx.strokeStyle = bubble.borderColor;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.roundRect(bx, by, bw, bh, 6);
+    ctx.fill();
+    ctx.stroke();
+
+    // Pointer triangle
+    ctx.fillStyle = bubble.bgColor;
+    ctx.beginPath();
+    ctx.moveTo(x - 4, by + bh);
+    ctx.lineTo(x, by + bh + 6);
+    ctx.lineTo(x + 4, by + bh);
+    ctx.closePath();
+    ctx.fill();
+
+    // Text
+    ctx.fillStyle = bubble.color;
+    ctx.textAlign = 'center';
+    ctx.fillText(text, x, by + 15);
+
+    ctx.globalAlpha = 1;
+  }
 }
 
-function openReplay(idx) {
-  switchTab('replays');
-  selectRun(idx);
-}
+// ============================================================
+// GLOBAL SCENE INSTANCE
+// ============================================================
+let scene = null;
 
-// ---- Replays ----
-function buildRunSelector() {
-  const el = document.getElementById('runSelector');
-  el.innerHTML = '';
-  const runs = allData.filter(d => d.history && d.history.length);
-  runs.forEach((run, i) => {
-    const btn = document.createElement('button');
-    btn.className = 'filter-btn' + (currentRun === run ? ' active' : '');
-    const models = [...new Set(run.model_assignments || [])].join('/');
-    btn.textContent = `#${run.run_id} ${run.scenario} (${models})`;
-    btn.onclick = () => selectRun(i);
-    el.appendChild(btn);
+function initScene() {
+  const canvas = document.getElementById('marketCanvas');
+  scene = new MarketScene(canvas);
+
+  // Resize handler
+  let resizeTimeout;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimeout);
+    resizeTimeout = setTimeout(() => {
+      scene._resizeCanvas();
+      scene._generateGround();
+      scene._buildStalls();
+      if (currentRun) scene.loadRun(currentRun);
+    }, 200);
   });
 }
 
+// ============================================================
+// DATA LOADING
+// ============================================================
+async function loadData() {
+  let benchData = [], arenaData = [];
+  try { const r = await fetch('results.json'); benchData = (await r.json()).filter(d => !d.error); } catch {}
+  try { const r = await fetch('arena/results.json'); arenaData = (await r.json()).filter(d => !d.error); } catch {}
+  allData = [...benchData, ...arenaData];
+
+  eloRatings = {};
+  try { const r = await fetch('elo_ratings.json'); Object.assign(eloRatings, await r.json()); } catch {}
+  try { const r = await fetch('arena/elo_ratings.json'); Object.assign(eloRatings, await r.json()); } catch {}
+
+  let benchLog = [], arenaLog = [];
+  try { const r = await fetch('match_log.json'); benchLog = await r.json(); } catch {}
+  try { const r = await fetch('arena/match_log.json'); arenaLog = await r.json(); } catch {}
+  matchLog = [...benchLog, ...arenaLog];
+
+  renderLeaderboard();
+  renderAnalytics();
+
+  // Auto-load most recent run if no run selected
+  if (!currentRun && allData.length) {
+    const runs = allData.filter(d => d.history && d.history.length);
+    if (runs.length) selectRun(runs.length - 1);
+  }
+}
+
+// ============================================================
+// RUN SELECTION & REPLAY LOGIC
+// ============================================================
 function selectRun(idx) {
   const runs = allData.filter(d => d.history && d.history.length);
   if (!runs[idx]) return;
@@ -951,27 +1046,42 @@ function selectRun(idx) {
   currentStep = 0;
   playing = false;
   inventories = (currentRun.initial_inventories || []).map(inv => ({...inv}));
-  orderBook = [];
+  orderBookState = [];
   const targets = currentRun.targets || [];
   goalHistory = [{
     step: 0,
     completions: inventories.map((inv, i) => computeCompletion(inv, targets[i] || {}))
   }];
-  buildRunSelector();
   renderAgents();
   renderOrderBook();
   renderGoalChart();
   document.getElementById('eventLog').innerHTML = '';
+  document.getElementById('rpText').innerHTML = '<span class="rp-empty">Click an event or step through the replay</span>';
+  document.getElementById('rpAgent').textContent = '';
   updateStep();
   renderSummary(false);
+
+  // Load into scene
+  if (scene) scene.loadRun(currentRun);
 }
 
+function computeCompletion(inv, target) {
+  if (!target || Object.keys(target).length === 0) return 1;
+  let scores = [];
+  for (const [item, needed] of Object.entries(target)) {
+    if (needed > 0) scores.push(Math.min((inv[item] || 0) / needed, 1.0));
+  }
+  return scores.length ? scores.reduce((a,b)=>a+b,0) / scores.length : 1;
+}
+
+// ============================================================
+// AGENT CARDS
+// ============================================================
 function renderAgents() {
   if (!currentRun) return;
   const el = document.getElementById('agentsGrid');
   const n = currentRun.model_assignments ? currentRun.model_assignments.length : 0;
   const targets = currentRun.targets || [];
-
   const strats = currentRun.strategy_assignments || [];
   el.innerHTML = '';
   for (let i = 0; i < n; i++) {
@@ -984,7 +1094,6 @@ function renderAgents() {
     const color = gc(contestant);
     const emoji = AGENT_EMOJI[i % AGENT_EMOJI.length];
     const stratLabel = strat && strat !== model ? `<div class="agent-strat" style="color:${color}">${strat}</div>` : '';
-
     el.innerHTML += `
       <div class="agent-card" id="agent-card-${i}">
         <div class="sprite" style="background:${color}11;border-color:${color}44">${emoji}</div>
@@ -1000,29 +1109,14 @@ function renderAgents() {
   }
 }
 
-function computeCompletion(inv, target) {
-  if (!target || Object.keys(target).length === 0) return 1;
-  let scores = [];
-  for (const [item, needed] of Object.entries(target)) {
-    if (needed > 0) {
-      scores.push(Math.min((inv[item] || 0) / needed, 1.0));
-    }
-  }
-  return scores.length ? scores.reduce((a,b)=>a+b,0) / scores.length : 1;
-}
-
 function updateAgents() {
   if (!currentRun) return;
   const n = currentRun.model_assignments ? currentRun.model_assignments.length : 0;
   const targets = currentRun.targets || [];
-
   for (let i = 0; i < n; i++) {
     const inv = inventories[i] || {};
     const target = targets[i] || {};
     const completion = computeCompletion(inv, target);
-    const model = currentRun.model_assignments[i];
-    const color = gc(model);
-
     const invEl = document.getElementById(`inv-${i}`);
     if (invEl) {
       invEl.innerHTML = Object.entries(inv).filter(([,v])=>v>0)
@@ -1035,27 +1129,30 @@ function updateAgents() {
   }
 }
 
+// ============================================================
+// ORDER BOOK
+// ============================================================
 function renderOrderBook() {
   const el = document.getElementById('obEntries');
-  if (!orderBook.length) {
+  if (!orderBookState.length) {
     el.innerHTML = '<span style="color:var(--text3);font-size:0.7rem">empty</span>';
     return;
   }
-  el.innerHTML = orderBook.map(o => {
+  el.innerHTML = orderBookState.map(o => {
     const priv = o.private ? `<span style="color:var(--purple)"> [WHISPER to T${o.visible_to}]</span>` : '';
     return `<div class="ob-entry">[#${o.id}] Trader ${o.poster} gives ${itemStr(o.give)} for ${itemStr(o.want)}${priv}</div>`;
   }).join('');
 }
 
-let goalChartInstance = null;
+// ============================================================
+// GOAL CHART
+// ============================================================
 function renderGoalChart() {
   const canvas = document.getElementById('goalChart');
   if (!canvas || !currentRun) return;
-
   const n = currentRun.model_assignments ? currentRun.model_assignments.length : 0;
   const strats = currentRun.strategy_assignments || [];
   const labels = goalHistory.map(h => h.step);
-
   const datasets = [];
   for (let i = 0; i < n; i++) {
     const model = currentRun.model_assignments[i];
@@ -1063,68 +1160,45 @@ function renderGoalChart() {
     const contestant = strat && strat !== model ? strat : model;
     const color = gc(contestant);
     const agentLabel = `T${i} ${contestant}` + (strat && strat !== model ? ` (${model})` : '');
-
     datasets.push({
       label: agentLabel,
       data: goalHistory.map(h => (h.completions[i] * 100).toFixed(1)),
-      borderColor: color,
-      backgroundColor: color + '18',
+      borderColor: color, backgroundColor: color + '18',
       borderWidth: 2,
       pointRadius: goalHistory.length > 30 ? 0 : 3,
-      pointHoverRadius: 5,
-      tension: 0.3,
-      fill: false,
+      pointHoverRadius: 5, tension: 0.3, fill: false,
     });
   }
-
   if (goalChartInstance) {
     goalChartInstance.data.labels = labels;
     goalChartInstance.data.datasets = datasets;
     goalChartInstance.update('none');
     return;
   }
-
   goalChartInstance = new Chart(canvas, {
-    type: 'line',
-    data: { labels, datasets },
+    type: 'line', data: { labels, datasets },
     options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      animation: false,
+      responsive: true, maintainAspectRatio: false, animation: false,
       interaction: { mode: 'index', intersect: false },
       plugins: {
-        legend: {
-          position: 'bottom',
-          labels: { font: { size: 10, family: "'SF Mono', monospace" }, boxWidth: 12, padding: 8 }
-        },
-        tooltip: {
-          callbacks: {
-            label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y}%`
-          }
-        }
+        legend: { position: 'bottom', labels: { font: { size: 10, family: "'SF Mono', monospace" }, boxWidth: 12, padding: 8 } },
+        tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y}%` } }
       },
       scales: {
-        x: {
-          title: { display: true, text: 'step', font: { size: 10 } },
-          grid: { color: '#e5e7eb' },
-          ticks: { font: { size: 9 } }
-        },
-        y: {
-          min: 0, max: 100,
-          title: { display: true, text: 'goal %', font: { size: 10 } },
-          grid: { color: '#e5e7eb' },
-          ticks: { font: { size: 9 }, callback: v => v + '%' }
-        }
+        x: { title: { display: true, text: 'step', font: { size: 10 } }, grid: { color: '#e5e7eb' }, ticks: { font: { size: 9 } } },
+        y: { min: 0, max: 100, title: { display: true, text: 'goal %', font: { size: 10 } }, grid: { color: '#e5e7eb' }, ticks: { font: { size: 9 }, callback: v => v + '%' } }
       }
     }
   });
 }
 
+// ============================================================
+// EVENT LOG
+// ============================================================
 function renderEvent(h) {
   const log = document.getElementById('eventLog');
   const model = currentRun.model_assignments[h.agent];
   const color = gc(model);
-
   let actionClass = 'ev-pass';
   let detail = h.message || '';
 
@@ -1149,12 +1223,15 @@ function renderEvent(h) {
 
   const div = document.createElement('div');
   div.className = 'event';
-  const label = h.contestant && h.contestant !== model ? `${h.contestant} (${model})` : model;
+  const strats = currentRun.strategy_assignments || [];
+  const strat = strats[h.agent] || '';
+  const label = strat && strat !== model ? `${strat} (${model})` : model;
   div.innerHTML = `
     <span class="ev-round">R${h.round}</span>
     <span class="ev-agent" style="color:${color}">T${h.agent} ${label}</span>
     <span class="ev-action ${actionClass}">${h.action.replace(/_/g,' ')}</span>
     <span class="ev-detail">${detail}</span>`;
+
   const reasoning = h.reasoning || '';
   const message = h.message || '';
   const thoughtText = reasoning ? `${reasoning}\n\nAction message: ${message}` : message;
@@ -1167,7 +1244,6 @@ function renderEvent(h) {
   }
   log.appendChild(div);
   log.scrollTop = log.scrollHeight;
-  // Auto-show reasoning for latest event
   if (thoughtText) {
     log.querySelectorAll('.event.selected').forEach(e => e.classList.remove('selected'));
     div.classList.add('selected');
@@ -1176,13 +1252,11 @@ function renderEvent(h) {
 }
 
 function renderMarkdown(text) {
-  // Simple markdown: **bold**, *italic*, `code`, - lists, numbered lists, paragraphs
   let html = text
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
     .replace(/\*(.+?)\*/g, '<em>$1</em>')
     .replace(/`(.+?)`/g, '<code>$1</code>');
-  // Split into paragraphs, handle lists
   const lines = html.split('\n');
   let out = '', inList = false, listType = '';
   for (const line of lines) {
@@ -1205,29 +1279,24 @@ function renderMarkdown(text) {
 }
 
 function showReasoning(agentIdx, label, color, text) {
-  const agentEl = document.getElementById('rpAgent');
-  const textEl = document.getElementById('rpText');
-  agentEl.style.color = color;
-  agentEl.textContent = `Trader ${agentIdx} (${label})`;
-  textEl.innerHTML = renderMarkdown(text);
+  document.getElementById('rpAgent').style.color = color;
+  document.getElementById('rpAgent').textContent = `Trader ${agentIdx} (${label})`;
+  document.getElementById('rpText').innerHTML = renderMarkdown(text);
 }
 
+// ============================================================
+// STEP ACTIONS (apply/unapply)
+// ============================================================
 function applyAction(h) {
   if ((h.action === 'post_offer' || h.action === 'private_offer') && !h.invalid) {
-    const offer = {
-      id: h.offer_id,
-      poster: h.agent,
-      give: {...(h.give || {})},
-      want: {...(h.want || {})},
-    };
+    const offer = { id: h.offer_id, poster: h.agent, give: {...(h.give || {})}, want: {...(h.want || {})} };
     if (h.action === 'private_offer' && h.target_agent != null) {
       offer.private = true;
       offer.visible_to = h.target_agent;
     }
-    orderBook.push(offer);
+    orderBookState.push(offer);
   } else if (h.action === 'accept_offer' && !h.invalid && h.trade) {
     const t = h.trade;
-    // Execute trade on inventories
     for (const [item, qty] of Object.entries(t.give || {})) {
       inventories[t.poster][item] = (inventories[t.poster][item] || 0) - qty;
       inventories[t.accepter][item] = (inventories[t.accepter][item] || 0) + qty;
@@ -1236,10 +1305,8 @@ function applyAction(h) {
       inventories[t.accepter][item] = (inventories[t.accepter][item] || 0) - qty;
       inventories[t.poster][item] = (inventories[t.poster][item] || 0) + qty;
     }
-    // Remove from order book
-    orderBook = orderBook.filter(o => o.id !== h.offer_id);
-    // Remove stale offers
-    orderBook = orderBook.filter(o => {
+    orderBookState = orderBookState.filter(o => o.id !== h.offer_id);
+    orderBookState = orderBookState.filter(o => {
       for (const [item, qty] of Object.entries(o.give)) {
         if ((inventories[o.poster][item] || 0) < qty) return false;
       }
@@ -1250,10 +1317,9 @@ function applyAction(h) {
 
 function unapplyAction(h) {
   if ((h.action === 'post_offer' || h.action === 'private_offer') && !h.invalid) {
-    orderBook = orderBook.filter(o => o.id !== h.offer_id);
+    orderBookState = orderBookState.filter(o => o.id !== h.offer_id);
   } else if (h.action === 'accept_offer' && !h.invalid && h.trade) {
     const t = h.trade;
-    // Reverse trade
     for (const [item, qty] of Object.entries(t.give || {})) {
       inventories[t.poster][item] = (inventories[t.poster][item] || 0) + qty;
       inventories[t.accepter][item] = (inventories[t.accepter][item] || 0) - qty;
@@ -1262,16 +1328,13 @@ function unapplyAction(h) {
       inventories[t.accepter][item] = (inventories[t.accepter][item] || 0) + qty;
       inventories[t.poster][item] = (inventories[t.poster][item] || 0) - qty;
     }
-    // Re-add to order book
-    orderBook.push({
-      id: h.offer_id,
-      poster: t.poster,
-      give: {...(t.give || {})},
-      want: {...(t.want || {})},
-    });
+    orderBookState.push({ id: h.offer_id, poster: t.poster, give: {...(t.give || {})}, want: {...(t.want || {})} });
   }
 }
 
+// ============================================================
+// PLAYBACK CONTROLS
+// ============================================================
 function stepForward() {
   if (!currentRun || currentStep >= currentRun.history.length) return;
   const h = currentRun.history[currentStep];
@@ -1280,7 +1343,8 @@ function stepForward() {
   updateAgents();
   renderOrderBook();
   renderEvent(h);
-  // Track goal completion
+  // Trigger 2D scene animation
+  if (scene) scene.advanceEvent(h);
   const targets = currentRun.targets || [];
   goalHistory.push({
     step: currentStep,
@@ -1312,13 +1376,9 @@ function restart() {
   playing = false;
   currentStep = 0;
   inventories = (currentRun.initial_inventories || []).map(inv => ({...inv}));
-  orderBook = [];
-  // Record initial goal state
+  orderBookState = [];
   const targets = currentRun.targets || [];
-  goalHistory = [{
-    step: 0,
-    completions: inventories.map((inv, i) => computeCompletion(inv, targets[i] || {}))
-  }];
+  goalHistory = [{ step: 0, completions: inventories.map((inv, i) => computeCompletion(inv, targets[i] || {})) }];
   renderAgents();
   renderOrderBook();
   renderGoalChart();
@@ -1327,6 +1387,7 @@ function restart() {
   document.getElementById('rpAgent').textContent = '';
   updateStep();
   renderSummary(false);
+  if (scene) scene.loadRun(currentRun);
 }
 
 async function playAll() {
@@ -1334,9 +1395,16 @@ async function playAll() {
   playing = true;
   while (currentStep < currentRun.history.length && playing) {
     stepForward();
-    await new Promise(r => setTimeout(r, 500));
+    await new Promise(r => setTimeout(r, Math.max(100, 500 / playSpeed)));
   }
   playing = false;
+}
+
+function setSpeed(s) {
+  playSpeed = s;
+  document.querySelectorAll('.market-toolbar button').forEach(b => b.classList.remove('active'));
+  const btn = document.getElementById('speed' + s);
+  if (btn) btn.classList.add('active');
 }
 
 function updateStep() {
@@ -1359,13 +1427,288 @@ function renderSummary(show) {
     <div><div class="s-val">${(r.elapsed_seconds||0).toFixed(1)}s</div><div class="s-lbl">time</div></div>`;
 }
 
-loadData();
-setInterval(loadData, 5000);
+// ============================================================
+// LEADERBOARD
+// ============================================================
+function renderLeaderboard() {
+  const data = allData, el = document.getElementById('leaderboard');
+  if (!data.length) { el.innerHTML = '<tr><td class="empty-state" colspan="6">no data yet &mdash; run a match to see results</td></tr>'; return; }
 
-// ---- Live match streaming ----
-const LIVE_FILES = ['arena/live_gold_rush.json', 'arena/live_water_crisis.json', 'arena/live_spice_wars.json'];
-let liveMatches = {}; // scenario -> data
-let activeLive = null; // which scenario we're watching
+  const s = {};
+  data.forEach(d => {
+    const mgc = getGoalCompletion(d) || {};
+    Object.entries(mgc).forEach(([model, score]) => {
+      if (!s[model]) s[model] = { scores: [], trades: [], invalids: [] };
+      s[model].scores.push(score);
+      s[model].trades.push(d.num_trades || 0);
+      s[model].invalids.push(d.invalid_rate || 0);
+    });
+  });
+
+  function wld(model) {
+    let w=0, l=0, d=0;
+    matchLog.forEach(m => {
+      if (m.model_a !== model && m.model_b !== model) return;
+      if (m.winner === 'draw') d++;
+      else if (m.winner === model) w++;
+      else l++;
+    });
+    return {w,l,d};
+  }
+
+  const avg = a => a.reduce((x,y) => x+y, 0) / a.length;
+  const rows = Object.entries(s).map(([m,v]) => ({
+    m, elo: eloRatings[m] || 1500, sc: avg(v.scores), tr: avg(v.trades),
+    inv: avg(v.invalids)*100, n: v.scores.length, ...wld(m)
+  })).sort((a,b) => b.elo - a.elo);
+
+  function parseContestant(name) {
+    const parts = name.split(':');
+    if (parts.length === 2) return { strategy: parts[0], model: parts[1] };
+    return { strategy: '', model: name };
+  }
+
+  const hasStrategies = rows.some(r => r.m.includes(':'));
+  const stratHeader = hasStrategies ? '<th>strategy</th><th>model</th>' : '<th>contestant</th>';
+  el.innerHTML = `<thead><tr>${stratHeader}<th class="r">elo</th><th class="r">W-L-D</th><th class="r">goal %</th><th class="r">invalid %</th><th class="r">matches</th></tr></thead>
+  <tbody>${rows.map(r => {
+    const p = parseContestant(r.m);
+    const nameCell = hasStrategies
+      ? `<td><span class="tag" style="background:${gc(r.m)}18;color:${gc(r.m)}">${p.strategy}</span></td><td><span class="tag" style="background:${gc(p.model)}18;color:${gc(p.model)}">${p.model}</span></td>`
+      : `<td><span class="tag" style="background:${gc(r.m)}18;color:${gc(r.m)}">${r.m}</span></td>`;
+    return `<tr>
+    ${nameCell}
+    <td class="r" style="font-weight:600">${Math.round(r.elo)}</td>
+    <td class="r">${r.w}-${r.l}-${r.d}</td>
+    <td class="r">${(r.sc*100).toFixed(1)}%</td>
+    <td class="r">${r.inv.toFixed(1)}%</td>
+    <td class="r">${r.n}</td></tr>`;
+  }).join('')}</tbody>`;
+}
+
+// ============================================================
+// ANALYTICS CHARTS
+// ============================================================
+let activeScenario = 'all';
+
+function filtered() {
+  return activeScenario === 'all' ? allData : allData.filter(d => d.scenario === activeScenario);
+}
+
+function renderAnalytics() {
+  renderFilters();
+  renderGoalScatter();
+  renderEloChart();
+  renderTradesChart();
+  renderInvalidChart();
+  renderHistory();
+}
+
+function renderFilters() {
+  const scenarios = ['all', ...new Set(allData.map(d => d.scenario))];
+  const el = document.getElementById('scenarioFilters');
+  el.innerHTML = '';
+  scenarios.forEach(s => {
+    const btn = document.createElement('button');
+    btn.className = 'filter-btn' + (s === activeScenario ? ' active' : '');
+    btn.textContent = s;
+    btn.onclick = () => { activeScenario = s; renderAnalytics(); };
+    el.appendChild(btn);
+  });
+}
+
+function renderGoalScatter() {
+  const data = filtered();
+  const svg = document.getElementById('chartGoal');
+  svg.innerHTML = '';
+  if (!data.length) { svg.innerHTML = '<text x="230" y="130" text-anchor="middle" fill="#9ca3af" font-size="11">no data yet</text>'; return; }
+
+  const W=460,H=260,p={t:16,r:20,b:32,l:42};
+  const pw=W-p.l-p.r, ph=H-p.t-p.b;
+  const xS = i => p.l + (i / Math.max(data.length-1, 1)) * pw;
+  const yS = v => p.t + ph - v * ph;
+
+  for(let i=0;i<=4;i++){
+    const y=p.t+(i/4)*ph, v=1-(i/4);
+    svg.innerHTML+=`<line x1="${p.l}" y1="${y}" x2="${W-p.r}" y2="${y}" stroke="#e5e7eb" stroke-width="1"/>`;
+    svg.innerHTML+=`<text x="${p.l-5}" y="${y+3}" text-anchor="end" fill="#9ca3af" font-size="8">${(v*100).toFixed(0)}%</text>`;
+  }
+  svg.innerHTML+=`<text x="${p.l+pw/2}" y="${H-4}" text-anchor="middle" fill="#9ca3af" font-size="9">run</text>`;
+
+  data.forEach((d,i) => {
+    const cx = xS(i);
+    const mgc = getGoalCompletion(d) || {};
+    Object.entries(mgc).forEach(([model, score]) => {
+      const cy = yS(score);
+      const c = gc(model);
+      svg.innerHTML += `<circle cx="${cx}" cy="${cy}" r="4" fill="${c}" opacity="0.85"><title>${d.scenario}: ${model} = ${(score*100).toFixed(0)}%</title></circle>`;
+    });
+  });
+
+  const models = [...new Set(allData.flatMap(d => Object.keys(getGoalCompletion(d) || {})))];
+  models.forEach((m,i) => {
+    const lx = p.l + i * 70;
+    svg.innerHTML += `<circle cx="${lx}" cy="${H-16}" r="3" fill="${gc(m)}"/>`;
+    svg.innerHTML += `<text x="${lx+6}" y="${H-13}" fill="#6b7280" font-size="8">${m}</text>`;
+  });
+}
+
+function renderEloChart() {
+  const svg = document.getElementById('chartElo');
+  svg.innerHTML = '';
+  if (!matchLog.length) { svg.innerHTML = '<text x="230" y="130" text-anchor="middle" fill="#9ca3af" font-size="11">no matches yet</text>'; return; }
+
+  const history = {};
+  matchLog.forEach((m, idx) => {
+    const after = m.elo_after || {};
+    Object.entries(after).forEach(([name, elo]) => {
+      if (!history[name]) history[name] = [];
+      history[name].push({ idx, elo });
+    });
+  });
+
+  const contestants = Object.keys(history);
+  if (!contestants.length) { svg.innerHTML = '<text x="230" y="130" text-anchor="middle" fill="#9ca3af" font-size="11">no elo data</text>'; return; }
+
+  const W=460,H=260,p={t:16,r:100,b:32,l:42};
+  const pw=W-p.l-p.r, ph=H-p.t-p.b;
+
+  let minElo = 1500, maxElo = 1500;
+  contestants.forEach(c => { history[c].forEach(h => { minElo = Math.min(minElo, h.elo); maxElo = Math.max(maxElo, h.elo); }); });
+  const eloPad = Math.max((maxElo - minElo) * 0.1, 20);
+  minElo = Math.floor((minElo - eloPad) / 10) * 10;
+  maxElo = Math.ceil((maxElo + eloPad) / 10) * 10;
+
+  const totalMatches = matchLog.length;
+  const xS = i => p.l + (i / Math.max(totalMatches - 1, 1)) * pw;
+  const yS = v => p.t + ph - ((v - minElo) / (maxElo - minElo)) * ph;
+
+  const eloStep = Math.max(Math.round((maxElo - minElo) / 5 / 10) * 10, 10);
+  for (let v = Math.ceil(minElo / eloStep) * eloStep; v <= maxElo; v += eloStep) {
+    const y = yS(v);
+    svg.innerHTML += `<line x1="${p.l}" y1="${y}" x2="${W-p.r}" y2="${y}" stroke="#e5e7eb" stroke-width="1"/>`;
+    svg.innerHTML += `<text x="${p.l-5}" y="${y+3}" text-anchor="end" fill="#9ca3af" font-size="8">${v}</text>`;
+  }
+  const y1500 = yS(1500);
+  svg.innerHTML += `<line x1="${p.l}" y1="${y1500}" x2="${W-p.r}" y2="${y1500}" stroke="#d1d5db" stroke-width="1" stroke-dasharray="4,3"/>`;
+
+  contestants.forEach(c => {
+    const pts = history[c];
+    const color = gc(c);
+    if (pts.length < 2) {
+      svg.innerHTML += `<circle cx="${xS(pts[0].idx)}" cy="${yS(pts[0].elo)}" r="3" fill="${color}"><title>${c}: ${pts[0].elo.toFixed(0)}</title></circle>`;
+      return;
+    }
+    const pathParts = pts.map((pt, i) => `${i === 0 ? 'M' : 'L'}${xS(pt.idx).toFixed(1)},${yS(pt.elo).toFixed(1)}`);
+    svg.innerHTML += `<path d="${pathParts.join(' ')}" fill="none" stroke="${color}" stroke-width="1.5" opacity="0.8"/>`;
+    const last = pts[pts.length - 1];
+    svg.innerHTML += `<circle cx="${xS(last.idx)}" cy="${yS(last.elo)}" r="3" fill="${color}"><title>${c}: ${last.elo.toFixed(0)}</title></circle>`;
+  });
+
+  const sorted = contestants.map(c => ({ name: c, elo: history[c][history[c].length - 1].elo })).sort((a, b) => b.elo - a.elo);
+  sorted.forEach((s, i) => {
+    const ly = p.t + 6 + i * 14;
+    const lx = W - p.r + 8;
+    svg.innerHTML += `<circle cx="${lx}" cy="${ly}" r="3" fill="${gc(s.name)}"/>`;
+    svg.innerHTML += `<text x="${lx+6}" y="${ly+3}" fill="#6b7280" font-size="8">${s.name} (${s.elo.toFixed(0)})</text>`;
+  });
+}
+
+function renderTradesChart() {
+  const data = filtered();
+  const svg = document.getElementById('chartTrades');
+  svg.innerHTML = '';
+  if (!data.length) { svg.innerHTML = '<text x="230" y="100" text-anchor="middle" fill="#9ca3af" font-size="11">no data yet</text>'; return; }
+
+  const W=460,H=200,p={t:12,r:20,b:28,l:42};
+  const pw=W-p.l-p.r, ph=H-p.t-p.b;
+  const maxTrades = Math.max(...data.map(d => d.num_trades || 0), 1);
+  const barW = Math.max(2, Math.min(12, pw / data.length - 2));
+
+  for(let i=0;i<=4;i++){
+    const y=p.t+(i/4)*ph, v=maxTrades*(1-i/4);
+    svg.innerHTML+=`<line x1="${p.l}" y1="${y}" x2="${W-p.r}" y2="${y}" stroke="#e5e7eb" stroke-width="1"/>`;
+    svg.innerHTML+=`<text x="${p.l-5}" y="${y+3}" text-anchor="end" fill="#9ca3af" font-size="8">${Math.round(v)}</text>`;
+  }
+
+  data.forEach((d, i) => {
+    const x = p.l + (i / Math.max(data.length-1, 1)) * pw - barW/2;
+    const val = d.num_trades || 0;
+    const barH = (val / maxTrades) * ph;
+    const y = p.t + ph - barH;
+    const models = Object.keys(getGoalCompletion(d) || {});
+    const color = models.length ? gc(models[0]) : '#6b7280';
+    svg.innerHTML += `<rect x="${x}" y="${y}" width="${barW}" height="${barH}" rx="1" fill="${color}" opacity="0.7"><title>${d.scenario} #${d.run_id}: ${val} trades</title></rect>`;
+  });
+  svg.innerHTML+=`<text x="${p.l+pw/2}" y="${H-4}" text-anchor="middle" fill="#9ca3af" font-size="9">run</text>`;
+}
+
+function renderInvalidChart() {
+  const data = filtered();
+  const svg = document.getElementById('chartInvalid');
+  svg.innerHTML = '';
+  if (!data.length) { svg.innerHTML = '<text x="230" y="100" text-anchor="middle" fill="#9ca3af" font-size="11">no data yet</text>'; return; }
+
+  const W=460,H=200,p={t:12,r:20,b:28,l:42};
+  const pw=W-p.l-p.r, ph=H-p.t-p.b;
+  const maxRate = Math.max(...data.map(d => d.invalid_rate || 0), 0.01);
+  const barW = Math.max(2, Math.min(12, pw / data.length - 2));
+
+  for(let i=0;i<=4;i++){
+    const y=p.t+(i/4)*ph, v=maxRate*(1-i/4);
+    svg.innerHTML+=`<line x1="${p.l}" y1="${y}" x2="${W-p.r}" y2="${y}" stroke="#e5e7eb" stroke-width="1"/>`;
+    svg.innerHTML+=`<text x="${p.l-5}" y="${y+3}" text-anchor="end" fill="#9ca3af" font-size="8">${(v*100).toFixed(0)}%</text>`;
+  }
+
+  data.forEach((d, i) => {
+    const x = p.l + (i / Math.max(data.length-1, 1)) * pw - barW/2;
+    const val = d.invalid_rate || 0;
+    const barH = (val / maxRate) * ph;
+    const y = p.t + ph - barH;
+    svg.innerHTML += `<rect x="${x}" y="${y}" width="${barW}" height="${barH}" rx="1" fill="#dc2626" opacity="0.6"><title>${d.scenario} #${d.run_id}: ${(val*100).toFixed(1)}% invalid</title></rect>`;
+  });
+  svg.innerHTML+=`<text x="${p.l+pw/2}" y="${H-4}" text-anchor="middle" fill="#9ca3af" font-size="9">run</text>`;
+}
+
+function renderHistory() {
+  const data = filtered(), el = document.getElementById('history');
+  if (!el) return;
+  if (!data.length) { el.innerHTML = '<tr><td class="empty-state" colspan="6">no data</td></tr>'; return; }
+
+  el.innerHTML = `<thead><tr><th>#</th><th>scenario</th><th>result</th><th class="r">goal %</th><th class="r">trades</th><th class="r">time</th></tr></thead>
+  <tbody>${data.map((d) => {
+    const mgc = getGoalCompletion(d) || {};
+    const models = Object.keys(mgc);
+    let resultStr = '';
+    if (models.length === 2) {
+      const [a, b] = models;
+      const sa = mgc[a], sb = mgc[b];
+      const diff = Math.abs(sa - sb);
+      if (diff < 0.02) {
+        resultStr = `<span class="tag" style="background:#fbbf2418;color:#fbbf24">draw</span> `;
+      } else {
+        const winner = sa > sb ? a : b;
+        resultStr = `<span class="tag" style="background:${gc(winner)}18;color:${gc(winner)}">${winner} wins</span> `;
+      }
+    }
+    resultStr += Object.entries(mgc).map(([m,s]) =>
+      `<span class="tag" style="background:${gc(m)}18;color:${gc(m)}">${m}: ${(s*100).toFixed(0)}%</span>`
+    ).join(' ');
+    return `<tr>
+    <td>${d.run_id}</td><td>${d.scenario}</td><td>${resultStr}</td>
+    <td class="r">${((d.avg_goal_completion||0)*100).toFixed(0)}%</td>
+    <td class="r">${d.num_trades||0}</td>
+    <td class="r">${(d.elapsed_seconds||0).toFixed(1)}s</td></tr>`;
+  }).join('')}</tbody>`;
+}
+
+// ============================================================
+// LIVE MATCH STREAMING
+// ============================================================
+const LIVE_FILES = ['arena/live_gold_rush.json', 'arena/live_water_crisis.json', 'arena/live_spice_wars.json',
+  'arena/live_complex_market.json', 'arena/live_fruit_trade.json', 'arena/live_hidden_gem.json', 'arena/live_resource_scarcity.json'];
+let liveMatches = {};
+let activeLive = null;
 let liveStep = 0;
 
 async function pollLive() {
@@ -1382,14 +1725,18 @@ async function pollLive() {
   }
   updateLiveBadges();
 
+  // Auto-start watching if a live match appears and nothing is playing
+  if (anyLive && !currentRun) {
+    const scenario = Object.keys(liveMatches)[0];
+    if (scenario) watchLive(scenario);
+  }
+
   // Auto-advance if watching a live match
   if (currentRun && currentRun._live && activeLive && liveMatches[activeLive]) {
     const data = liveMatches[activeLive];
     const isNew = data.history.length < liveStep;
-    if (isNew) {
-      liveStep = 0;
-      watchLive(activeLive);
-    } else if (data.history.length > liveStep) {
+    if (isNew) { liveStep = 0; watchLive(activeLive); }
+    else if (data.history.length > liveStep) {
       currentRun.history = data.history;
       currentRun.agent_results = data.agent_results;
       currentRun.trades = data.trades;
@@ -1400,6 +1747,7 @@ async function pollLive() {
         updateAgents();
         renderOrderBook();
         renderEvent(h);
+        if (scene) scene.advanceEvent(h);
         goalHistory.push({
           step: goalHistory.length,
           completions: inventories.map((inv, j) => computeCompletion(inv, targets[j] || {}))
@@ -1415,12 +1763,9 @@ async function pollLive() {
 
 function updateLiveBadges() {
   const controls = document.getElementById('replayControls');
-  // Remove old badges
   controls.querySelectorAll('.live-btn').forEach(b => b.remove());
-  // Add one per live match
   for (const [scenario, data] of Object.entries(liveMatches)) {
-    const isCompleted = data.status === 'completed';
-    if (isCompleted) continue; // Don't show badge for completed matches
+    if (data.status === 'completed') continue;
     const btn = document.createElement('button');
     btn.className = 'ctrl-btn live-btn';
     const isActive = activeLive === scenario && currentRun && currentRun._live;
@@ -1443,7 +1788,7 @@ function watchLive(scenario) {
   liveStep = 0;
   playing = false;
   inventories = (currentRun.initial_inventories || []).map(inv => ({...inv}));
-  orderBook = [];
+  orderBookState = [];
   const targets = currentRun.targets || [];
   goalHistory = [{step:0, completions: inventories.map((inv,i) => computeCompletion(inv, targets[i]||{}))}];
   renderAgents();
@@ -1452,12 +1797,17 @@ function watchLive(scenario) {
   document.getElementById('eventLog').innerHTML = '';
   document.getElementById('rpText').innerHTML = '<span class="rp-empty">Watching live...</span>';
   document.getElementById('rpAgent').textContent = '';
+
+  // Load scene
+  if (scene) scene.loadRun(currentRun);
+
   for (let i = 0; i < data.history.length; i++) {
     const h = data.history[i];
     applyAction(h);
     updateAgents();
     renderOrderBook();
     renderEvent(h);
+    if (scene) scene.advanceEvent(h);
     goalHistory.push({
       step: goalHistory.length,
       completions: inventories.map((inv,j) => computeCompletion(inv, targets[j]||{}))
@@ -1468,9 +1818,14 @@ function watchLive(scenario) {
   currentStep = liveStep;
   updateStep();
   updateLiveBadges();
-  switchTab('replays');
 }
 
+// ============================================================
+// INIT
+// ============================================================
+initScene();
+loadData();
+setInterval(loadData, 5000);
 setInterval(pollLive, 3000);
 pollLive();
 </script>
