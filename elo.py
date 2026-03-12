@@ -1,6 +1,8 @@
 """ELO rating system for BarterBench pairwise model comparison."""
 
+import fcntl
 import json
+from contextlib import contextmanager
 from pathlib import Path
 
 ELO_FILE = Path(__file__).parent / "elo_ratings.json"
@@ -8,6 +10,20 @@ MATCH_LOG = Path(__file__).parent / "match_log.json"
 
 DEFAULT_RATING = 1500
 K_FACTOR = 32
+
+
+@contextmanager
+def _file_lock(path):
+    """Acquire an exclusive file lock for atomic read-modify-write."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lock_path = Path(str(path) + ".lock")
+    lock_fd = open(lock_path, "w")
+    try:
+        fcntl.flock(lock_fd, fcntl.LOCK_EX)
+        yield
+    finally:
+        fcntl.flock(lock_fd, fcntl.LOCK_UN)
+        lock_fd.close()
 
 
 def expected_score(rating_a, rating_b):
@@ -84,7 +100,7 @@ def save_match_log(log):
 
 
 def record_match(run_entry, key_field="model_goal_completion"):
-    """Process a completed run and update ELO ratings.
+    """Process a completed run and update ELO ratings (thread-safe).
 
     key_field: which result field to use for pairwise comparison.
     Use "strategy_goal_completion" for arena mode.
@@ -96,15 +112,16 @@ def record_match(run_entry, key_field="model_goal_completion"):
         return None
 
     model_a, model_b, score_a = result
-    ratings = load_ratings()
 
-    old_a = ratings.get(model_a, DEFAULT_RATING)
-    old_b = ratings.get(model_b, DEFAULT_RATING)
-    new_a, new_b = update_ratings(old_a, old_b, score_a)
-
-    ratings[model_a] = new_a
-    ratings[model_b] = new_b
-    save_ratings(ratings)
+    # Atomic update of ELO ratings
+    with _file_lock(ELO_FILE):
+        ratings = load_ratings()
+        old_a = ratings.get(model_a, DEFAULT_RATING)
+        old_b = ratings.get(model_b, DEFAULT_RATING)
+        new_a, new_b = update_ratings(old_a, old_b, score_a)
+        ratings[model_a] = new_a
+        ratings[model_b] = new_b
+        save_ratings(ratings)
 
     # Determine outcome label
     if score_a == 1.0:
@@ -126,9 +143,11 @@ def record_match(run_entry, key_field="model_goal_completion"):
         "elo_after": {model_a: new_a, model_b: new_b},
     }
 
-    log = load_match_log()
-    log.append(match)
-    save_match_log(log)
+    # Atomic append to match log
+    with _file_lock(MATCH_LOG):
+        log = load_match_log()
+        log.append(match)
+        save_match_log(log)
 
     return match
 
