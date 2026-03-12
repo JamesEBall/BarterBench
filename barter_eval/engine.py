@@ -1,7 +1,9 @@
 """Marketplace engine: runs N-agent trading with an order book."""
 
+import json
 import random
 import time
+from pathlib import Path
 
 
 class MarketEngine:
@@ -52,6 +54,45 @@ class MarketEngine:
             o for o in self.order_book
             if self._has_items(o["poster"], o["give"])
         ]
+
+    def _write_live(self, initial_inventories, start_time):
+        """Write current match state to live.json for dashboard streaming."""
+        try:
+            live_dir = Path(__file__).parent / "arena"
+            live_dir.mkdir(parents=True, exist_ok=True)
+            live_file = live_dir / "live.json"
+            agent_results = []
+            for i in range(self.num_agents):
+                ar = {
+                    "agent_idx": i,
+                    "model": self.agents[i].model_name,
+                    "final_inventory": dict(self.inventories[i]),
+                    "target": self.targets[i],
+                    "goal_completion": round(self.goal_completion(i), 4),
+                }
+                if self.agents[i].strategy_id:
+                    ar["strategy_id"] = self.agents[i].strategy_id
+                agent_results.append(ar)
+
+            live = {
+                "status": "running",
+                "scenario": self.scenario.get("name", ""),
+                "elapsed_seconds": round(time.time() - start_time, 1),
+                "num_agents": self.num_agents,
+                "max_rounds": self.max_rounds,
+                "num_trades": len(self.trades),
+                "model_assignments": [a.model_name for a in self.agents],
+                "strategy_assignments": [a.contestant_name for a in self.agents],
+                "initial_inventories": initial_inventories,
+                "targets": [dict(t) for t in self.targets],
+                "agent_results": agent_results,
+                "trades": self.trades,
+                "history": self.history,
+            }
+            with open(live_file, "w") as f:
+                json.dump(live, f)
+        except Exception:
+            pass  # non-critical, don't break the match
 
     def goal_completion(self, agent_idx):
         """Compute goal completion for an agent (0-1)."""
@@ -152,6 +193,7 @@ class MarketEngine:
 
                 self.history.append(entry)
                 round_actions.append(entry)
+                self._write_live(initial_inventories, start_time)
 
             # Check if all agents have reached their goals
             all_complete = all(self.goal_completion(i) >= 1.0 for i in range(self.num_agents))

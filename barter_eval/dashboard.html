@@ -339,6 +339,7 @@ tr.clickable:hover td { background: #e5e7eb; }
   animation: fadeIn 0.25s forwards;
 }
 @keyframes fadeIn { to { opacity: 1; } }
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.6; } }
 .event .ev-round {
   font-family: var(--mono);
   font-size: 0.6rem;
@@ -1347,6 +1348,105 @@ function renderSummary(show) {
 
 loadData();
 setInterval(loadData, 5000);
+
+// ---- Live match streaming ----
+let liveData = null, liveStep = 0;
+async function pollLive() {
+  try {
+    const r = await fetch('arena/live.json?t=' + Date.now());
+    const data = await r.json();
+    if (data.status !== 'running' || !data.history || !data.history.length) {
+      if (liveData) { liveData = null; updateLiveBadge(); }
+      return;
+    }
+    const isNew = !liveData || liveData.scenario !== data.scenario || data.history.length < liveStep;
+    liveData = data;
+    updateLiveBadge();
+    // If viewing live, auto-advance
+    if (currentRun && currentRun._live) {
+      const newSteps = data.history.length - liveStep;
+      if (isNew) {
+        // New match started, reset
+        currentRun = Object.assign({}, data, {_live: true});
+        liveStep = 0;
+        selectLiveRun();
+      } else if (newSteps > 0) {
+        currentRun.history = data.history;
+        currentRun.agent_results = data.agent_results;
+        currentRun.trades = data.trades;
+        for (let i = liveStep; i < data.history.length; i++) {
+          const h = data.history[i];
+          applyAction(h);
+          updateAgents();
+          renderOrderBook();
+          renderEvent(h);
+          const targets = currentRun.targets || [];
+          goalHistory.push({
+            step: goalHistory.length,
+            completions: inventories.map((inv, j) => computeCompletion(inv, targets[j] || {}))
+          });
+          renderGoalChart();
+          updateStep();
+        }
+        liveStep = data.history.length;
+      }
+    }
+  } catch { /* no live data */ }
+}
+
+function updateLiveBadge() {
+  let badge = document.getElementById('liveBadge');
+  if (!badge) {
+    badge = document.createElement('button');
+    badge.id = 'liveBadge';
+    badge.className = 'ctrl-btn';
+    badge.style.cssText = 'background:#dc2626;color:white;border-color:#dc2626;font-weight:700;animation:pulse 2s infinite';
+    badge.textContent = 'LIVE';
+    badge.onclick = selectLiveRun;
+    const controls = document.getElementById('replayControls');
+    if (controls) controls.appendChild(badge);
+  }
+  badge.style.display = liveData ? 'inline-block' : 'none';
+}
+
+function selectLiveRun() {
+  if (!liveData) return;
+  if (goalChartInstance) { goalChartInstance.destroy(); goalChartInstance = null; }
+  currentRun = Object.assign({}, liveData, {_live: true});
+  currentStep = 0;
+  liveStep = 0;
+  playing = false;
+  inventories = (currentRun.initial_inventories || []).map(inv => ({...inv}));
+  orderBook = [];
+  const targets = currentRun.targets || [];
+  goalHistory = [{step:0, completions: inventories.map((inv,i) => computeCompletion(inv, targets[i]||{}))}];
+  renderAgents();
+  renderOrderBook();
+  renderGoalChart();
+  document.getElementById('eventLog').innerHTML = '';
+  document.getElementById('rpText').innerHTML = '<span class="rp-empty">Watching live match...</span>';
+  document.getElementById('rpAgent').textContent = '';
+  // Replay all existing history
+  for (let i = 0; i < liveData.history.length; i++) {
+    const h = liveData.history[i];
+    applyAction(h);
+    updateAgents();
+    renderOrderBook();
+    renderEvent(h);
+    goalHistory.push({
+      step: goalHistory.length,
+      completions: inventories.map((inv,j) => computeCompletion(inv, targets[j]||{}))
+    });
+    renderGoalChart();
+  }
+  liveStep = liveData.history.length;
+  currentStep = liveStep;
+  updateStep();
+  switchTab('replays');
+}
+
+setInterval(pollLive, 3000);
+pollLive();
 </script>
 </body>
 </html>
