@@ -549,7 +549,7 @@ function gc(m) {
   return `hsl(${Math.abs(h) % 360}, 55%, 45%)`;
 }
 function getGoalCompletion(d) {
-  return d.strategy_goal_completion || d.model_goal_completion || {};
+  return d.strategy_goal_completion || getGoalCompletion(d) || {};
 }
 function itemStr(items) {
   return Object.entries(items).filter(([,v])=>v>0).map(([k,v])=>`${ITEM_EMOJI[k]||''} ${v} ${k}`).join(', ') || 'nothing';

@@ -83,12 +83,14 @@ def save_match_log(log):
         json.dump(log, f, indent=2)
 
 
-def record_match(run_entry):
+def record_match(run_entry, key_field="model_goal_completion"):
     """Process a completed run and update ELO ratings.
 
+    key_field: which result field to use for pairwise comparison.
+    Use "strategy_goal_completion" for arena mode.
     Returns the match record or None if not a valid 2-way matchup.
     """
-    mgc = run_entry.get("model_goal_completion", {})
+    mgc = run_entry.get(key_field, run_entry.get("model_goal_completion", {}))
     result = determine_match_result(mgc)
     if result is None:
         return None

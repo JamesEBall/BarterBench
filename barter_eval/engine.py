@@ -94,6 +94,7 @@ class MarketEngine:
                     "round": round_num,
                     "agent": agent_idx,
                     "model": self.agents[agent_idx].model_name,
+                    "contestant": self.agents[agent_idx].contestant_name,
                     "action": action,
                     "message": turn.get("message", ""),
                 }
@@ -161,14 +162,17 @@ class MarketEngine:
         # Compute per-agent results
         agent_results = []
         for i in range(self.num_agents):
-            agent_results.append({
+            ar = {
                 "agent_idx": i,
                 "model": self.agents[i].model_name,
                 "initial_inventory": initial_inventories[i],
                 "final_inventory": dict(self.inventories[i]),
                 "target": self.targets[i],
                 "goal_completion": round(self.goal_completion(i), 4),
-            })
+            }
+            if self.agents[i].strategy_id:
+                ar["strategy_id"] = self.agents[i].strategy_id
+            agent_results.append(ar)
 
         return {
             "scenario": self.scenario["name"],
