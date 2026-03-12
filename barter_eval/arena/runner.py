@@ -270,9 +270,14 @@ def run_arena_match(scenario_name, scenario, strat_a, strat_b, run_id, verbose,
                 if h["action"] == "post_offer":
                     inv = " [INVALID]" if h.get("invalid") else ""
                     print(f"{tag} POST: give {h.get('give',{})} want {h.get('want',{})}{inv} — {h.get('message','')}")
+                elif h["action"] == "private_offer":
+                    inv = " [INVALID]" if h.get("invalid") else ""
+                    target = h.get("target_agent", "?")
+                    print(f"{tag} WHISPER to T{target}: give {h.get('give',{})} want {h.get('want',{})}{inv} — {h.get('message','')}")
                 elif h["action"] == "accept_offer":
                     inv = " [INVALID]" if h.get("invalid") else ""
-                    print(f"{tag} ACCEPT offer #{h.get('offer_id','?')}{inv} — {h.get('message','')}")
+                    priv = " [PRIVATE]" if h.get("trade", {}).get("private") else ""
+                    print(f"{tag} ACCEPT offer #{h.get('offer_id','?')}{inv}{priv} — {h.get('message','')}")
                 elif h["action"] == "pass_turn":
                     print(f"{tag} PASS — {h.get('message','')}")
             print()
@@ -295,7 +300,7 @@ def run_arena_match(scenario_name, scenario, strat_a, strat_b, run_id, verbose,
 
 # ---- Arena orchestration ----
 
-def run_arena(strategy_names, scenario_name, runs_per_matchup, verbose, models=None):
+def run_arena(strategy_names, scenario_name, runs_per_matchup, verbose, models=None, workers=4):
     """Run arena: all pairwise matchups between strategies.
 
     If models is provided (list of model names), each strategy is run with each model,
@@ -319,7 +324,6 @@ def run_arena(strategy_names, scenario_name, runs_per_matchup, verbose, models=N
 
     # Build contestant list: each contestant is (strategy, model, label)
     if models and len(models) > 1:
-        # Cross-model arena: each strategy x each model = distinct contestants
         contestants = []
         for strat, model in product(strategies, models):
             label = f"{strat['id']}:{model}"
@@ -333,8 +337,8 @@ def run_arena(strategy_names, scenario_name, runs_per_matchup, verbose, models=N
         print(f"  Contestants: {len(contestants)} (strategy x model)")
         print(f"  Scenarios: {', '.join(scenarios)}")
         print(f"  Total matches: {total_matches}")
+        print(f"  Workers: {workers} parallel")
     else:
-        # Same-model arena: contestant = strategy (all use default model)
         contestants_a = [(s, s.get("model", "haiku"), s["id"]) for s in strategies]
         pairs = list(combinations(contestants_a, 2))
         total_matches = len(pairs) * len(scenarios) * runs_per_matchup
@@ -342,10 +346,10 @@ def run_arena(strategy_names, scenario_name, runs_per_matchup, verbose, models=N
         print(f"  Strategies: {', '.join(s['id'] for s in strategies)}")
         print(f"  Scenarios: {', '.join(scenarios)}")
         print(f"  Matchups: {len(pairs)} pairs x {len(scenarios)} scenarios x {runs_per_matchup} runs = {total_matches} matches")
+        print(f"  Workers: {workers} parallel")
     print()
 
-    results = load_arena_results()
-    run_offset = len(results)
+    run_offset = len(load_arena_results())
     match_num = 0
 
     for scenario_n in scenarios:

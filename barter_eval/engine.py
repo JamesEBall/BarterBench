@@ -42,11 +42,23 @@ class MarketEngine:
             self.inventories[poster_idx][item] = self.inventories[poster_idx].get(item, 0) + int(qty)
 
     def _visible_order_book(self, agent_idx):
-        """Return order book entries visible to this agent (all open offers)."""
-        return [
-            {"id": o["id"], "poster": o["poster"], "give": o["give"], "want": o["want"]}
-            for o in self.order_book
-        ]
+        """Return order book entries visible to this agent.
+
+        Public offers are visible to everyone. Private offers (whispers)
+        are only visible to the poster and the target agent.
+        """
+        visible = []
+        for o in self.order_book:
+            if o.get("visible_to") is not None:
+                # Private offer — only visible to poster and target
+                if agent_idx != o["poster"] and agent_idx != o["visible_to"]:
+                    continue
+            entry = {"id": o["id"], "poster": o["poster"], "give": o["give"], "want": o["want"]}
+            if o.get("visible_to") is not None:
+                entry["private"] = True
+                entry["visible_to"] = o["visible_to"]
+            visible.append(entry)
+        return visible
 
     def _remove_stale_offers(self):
         """Remove offers where the poster no longer has the items."""
@@ -162,6 +174,34 @@ class MarketEngine:
                         entry["give"] = give
                         entry["want"] = want
 
+                elif action == "private_offer":
+                    give = turn.get("give", {})
+                    want = turn.get("want", {})
+                    target = turn.get("target_agent")
+                    valid_target = (isinstance(target, int) and 0 <= target < self.num_agents
+                                    and target != agent_idx)
+                    if self._has_items(agent_idx, give) and give and want and valid_target:
+                        offer = {
+                            "id": self.next_offer_id,
+                            "poster": agent_idx,
+                            "give": give,
+                            "want": want,
+                            "visible_to": target,
+                        }
+                        self.order_book.append(offer)
+                        entry["offer_id"] = self.next_offer_id
+                        entry["give"] = give
+                        entry["want"] = want
+                        entry["target_agent"] = target
+                        entry["private"] = True
+                        self.next_offer_id += 1
+                    else:
+                        entry["invalid"] = True
+                        entry["give"] = give
+                        entry["want"] = want
+                        entry["target_agent"] = target
+                        entry["private"] = True
+
                 elif action == "accept_offer":
                     offer_id = turn.get("offer_id")
                     matched = None
@@ -181,6 +221,8 @@ class MarketEngine:
                             "give": matched["give"],
                             "want": matched["want"],
                         }
+                        if matched.get("visible_to") is not None:
+                            trade_record["private"] = True
                         self.trades.append(trade_record)
                         self.order_book = [o for o in self.order_book if o["id"] != offer_id]
                         entry["offer_id"] = offer_id

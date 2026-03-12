@@ -368,6 +368,7 @@ tr.clickable:hover td { background: #e5e7eb; }
   flex: 1;
 }
 .ev-post { color: var(--blue); }
+.ev-whisper { color: var(--purple); }
 .ev-accept { color: var(--green); }
 .ev-pass { color: var(--text3); }
 .ev-invalid { color: var(--red); }
@@ -1040,9 +1041,10 @@ function renderOrderBook() {
     el.innerHTML = '<span style="color:var(--text3);font-size:0.7rem">empty</span>';
     return;
   }
-  el.innerHTML = orderBook.map(o =>
-    `<div class="ob-entry">[#${o.id}] Trader ${o.poster} gives ${itemStr(o.give)} for ${itemStr(o.want)}</div>`
-  ).join('');
+  el.innerHTML = orderBook.map(o => {
+    const priv = o.private ? `<span style="color:var(--purple)"> [WHISPER to T${o.visible_to}]</span>` : '';
+    return `<div class="ob-entry">[#${o.id}] Trader ${o.poster} gives ${itemStr(o.give)} for ${itemStr(o.want)}${priv}</div>`;
+  }).join('');
 }
 
 let goalChartInstance = null;
@@ -1130,12 +1132,18 @@ function renderEvent(h) {
     actionClass = h.invalid ? 'ev-invalid' : 'ev-post';
     const inv = h.invalid ? ' [INVALID]' : '';
     detail = `give ${itemStr(h.give||{})} for ${itemStr(h.want||{})}${inv}`;
+  } else if (h.action === 'private_offer') {
+    actionClass = h.invalid ? 'ev-invalid' : 'ev-whisper';
+    const inv = h.invalid ? ' [INVALID]' : '';
+    const target = h.target_agent != null ? ` to T${h.target_agent}` : '';
+    detail = `whisper${target}: give ${itemStr(h.give||{})} for ${itemStr(h.want||{})}${inv}`;
   } else if (h.action === 'accept_offer') {
     actionClass = h.invalid ? 'ev-invalid' : 'ev-accept';
     const inv = h.invalid ? ' [INVALID]' : '';
     detail = `accepted offer #${h.offer_id||'?'}${inv}`;
     if (h.trade) {
-      detail += ` (${itemStr(h.trade.give||{})} <-> ${itemStr(h.trade.want||{})})`;
+      const priv = h.trade.private ? ' [PRIVATE]' : '';
+      detail += ` (${itemStr(h.trade.give||{})} <-> ${itemStr(h.trade.want||{})})${priv}`;
     }
   }
 
@@ -1205,13 +1213,18 @@ function showReasoning(agentIdx, label, color, text) {
 }
 
 function applyAction(h) {
-  if (h.action === 'post_offer' && !h.invalid) {
-    orderBook.push({
+  if ((h.action === 'post_offer' || h.action === 'private_offer') && !h.invalid) {
+    const offer = {
       id: h.offer_id,
       poster: h.agent,
       give: {...(h.give || {})},
       want: {...(h.want || {})},
-    });
+    };
+    if (h.action === 'private_offer' && h.target_agent != null) {
+      offer.private = true;
+      offer.visible_to = h.target_agent;
+    }
+    orderBook.push(offer);
   } else if (h.action === 'accept_offer' && !h.invalid && h.trade) {
     const t = h.trade;
     // Execute trade on inventories
@@ -1236,7 +1249,7 @@ function applyAction(h) {
 }
 
 function unapplyAction(h) {
-  if (h.action === 'post_offer' && !h.invalid) {
+  if ((h.action === 'post_offer' || h.action === 'private_offer') && !h.invalid) {
     orderBook = orderBook.filter(o => o.id !== h.offer_id);
   } else if (h.action === 'accept_offer' && !h.invalid && h.trade) {
     const t = h.trade;

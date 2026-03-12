@@ -18,25 +18,15 @@ CLI_MODEL_MAP = {
     "opus": "opus",
 }
 
-VALID_ACTIONS = {"post_offer", "accept_offer", "pass_turn"}
+VALID_ACTIONS = {"post_offer", "accept_offer", "private_offer", "pass_turn"}
 
 JSON_SCHEMA_INSTRUCTION = """
-First, think step-by-step about your situation:
-1. What items do you still need? What do you have to trade?
-2. What's on the order book? Are any offers good for you?
-3. Which items are scarce? Who has leverage?
-4. What's your best move this turn and why?
+Think briefly, then output a JSON action:
 
-Then output your action as a JSON object on its own line:
-
-To post a new offer on the order book:
-{"action": "post_offer", "give": {"item": qty, ...}, "want": {"item": qty, ...}, "message": "your message"}
-
-To accept an existing offer from the order book (use the offer_id):
-{"action": "accept_offer", "offer_id": 123, "message": "your message"}
-
-To pass your turn (do nothing this round):
-{"action": "pass_turn", "message": "your message"}
+{"action": "post_offer", "give": {"item": qty}, "want": {"item": qty}, "message": "reason"}
+{"action": "private_offer", "give": {"item": qty}, "want": {"item": qty}, "target_agent": 3, "message": "reason"}
+{"action": "accept_offer", "offer_id": 123, "message": "reason"}
+{"action": "pass_turn", "message": "reason"}
 """.strip()
 
 MARKETPLACE_TOOLS = [
@@ -63,6 +53,20 @@ MARKETPLACE_TOOLS = [
                 "message": {"type": "string", "description": "Public message to other traders"},
             },
             "required": ["offer_id", "message"],
+        },
+    },
+    {
+        "name": "private_offer",
+        "description": "Send a private offer (whisper) to a specific trader. Only they can see and accept it — other traders cannot.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "give": {"type": "object", "description": "Items you offer to give, e.g. {\"apples\": 2}"},
+                "want": {"type": "object", "description": "Items you want in return, e.g. {\"oranges\": 3}"},
+                "target_agent": {"type": "integer", "description": "The trader index to send this private offer to"},
+                "message": {"type": "string", "description": "Private message to the target trader"},
+            },
+            "required": ["give", "want", "target_agent", "message"],
         },
     },
     {
@@ -111,24 +115,31 @@ def _build_marketplace_context(agent_idx, inventory, target, order_book, recent_
     lines.extend([
         "",
         "## Rules",
-        "1. You can POST an offer (give items you have, request items you need)",
-        "2. You can ACCEPT an existing offer from the order book",
-        "3. You can PASS if no good trades are available",
-        "4. Trades execute immediately when accepted — both inventories update",
-        "5. You can only offer items you currently have (quantity > 0)",
-        "6. You cannot accept your own offers",
-        "7. Be strategic: scarce items have leverage — don't give them away cheaply",
-        "8. Think about multi-hop trades: trade what you have for intermediary items to reach your goal",
+        "1. You can POST a public offer (visible to all traders on the order book)",
+        "2. You can send a PRIVATE OFFER (whisper) to a specific trader — only they can see it",
+        "3. You can ACCEPT an existing offer from the order book (public or private)",
+        "4. You can PASS if no good trades are available",
+        "5. Trades execute immediately when accepted — both inventories update",
+        "6. You can only offer items you currently have (quantity > 0)",
+        "7. You cannot accept your own offers",
+        "8. Be strategic: scarce items have leverage — don't give them away cheaply",
+        "9. Think about multi-hop trades: trade what you have for intermediary items to reach your goal",
+        "10. Use private offers to make deals without revealing your strategy to other traders",
     ])
 
     if order_book:
         lines.append("")
         lines.append("## Order Book (open offers you can accept)")
         for offer in order_book:
+            private_tag = " [PRIVATE]" if offer.get("private") else ""
             if offer["poster"] == agent_idx:
-                lines.append(f"  [#{offer['id']}] YOUR OFFER — give {json.dumps(offer['give'])}, want {json.dumps(offer['want'])}")
+                target_info = f" (whisper to Trader {offer['visible_to']})" if offer.get("visible_to") is not None else ""
+                lines.append(f"  [#{offer['id']}] YOUR OFFER{private_tag}{target_info} — give {json.dumps(offer['give'])}, want {json.dumps(offer['want'])}")
             else:
-                lines.append(f"  [#{offer['id']}] Trader {offer['poster']} offers {json.dumps(offer['give'])} for {json.dumps(offer['want'])}")
+                if offer.get("private"):
+                    lines.append(f"  [#{offer['id']}] 🤫 WHISPER from Trader {offer['poster']} — offers {json.dumps(offer['give'])} for {json.dumps(offer['want'])}")
+                else:
+                    lines.append(f"  [#{offer['id']}] Trader {offer['poster']} offers {json.dumps(offer['give'])} for {json.dumps(offer['want'])}")
     else:
         lines.append("")
         lines.append("## Order Book: empty — no open offers")
@@ -156,6 +167,7 @@ def _parse_json_response(text):
                 "give": data.get("give", {}),
                 "want": data.get("want", {}),
                 "offer_id": data.get("offer_id"),
+                "target_agent": data.get("target_agent"),
                 "message": data.get("message", ""),
                 "reasoning": text[:text.find(json_match.group())].strip(),
             }
@@ -250,6 +262,7 @@ class MarketAgent:
             "give": tool_input.get("give", {}),
             "want": tool_input.get("want", {}),
             "offer_id": tool_input.get("offer_id"),
+            "target_agent": tool_input.get("target_agent"),
             "message": tool_input.get("message", ""),
             "reasoning": reasoning,
         }

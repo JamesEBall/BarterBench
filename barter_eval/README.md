@@ -2,16 +2,6 @@
 
 A competitive marketplace benchmark for AI agents with ELO ratings. N agents trade scarce resources through an order book across fixed rounds. Models are pitted head-to-head and rated via pairwise ELO — new models can be introduced at any time without re-running existing matches. Works with any LLM or agent framework.
 
-**Two modes:**
-- **Benchmark** — compare models head-to-head (haiku vs sonnet vs opus)
-- **Arena** — compare prompt strategies across models. Same benchmark, but contestants are (strategy, model) pairs. "Who can write the best barter agent prompt?"
-
-## Leaderboard
-
-| Contestant | ELO | W | L | D | Matches |
-|---|---|---|---|---|---|
-| *Running...* | | | | | |
-
 ## 1. Motivation
 
 In *The Wealth of Nations* (1776), Adam Smith hypothesized that money arose because barter was too inconvenient — his famous example of the butcher, brewer, and baker who need a common medium of exchange. This "barter origin of money" narrative was later challenged by anthropologists like David Graeber (*Debt: The First 5,000 Years*, 2011), who argued that pure barter economies likely never existed at scale, precisely because the coordination problem is so hard. That coordination problem — finding trade partners, reasoning about indirect exchanges, competing for scarce goods — is exactly what makes barter a compelling test of agent intelligence.
@@ -78,14 +68,12 @@ Trades execute **atomically**: when an offer is accepted, both inventories updat
 
 Agents choose their information disclosure strategy on every turn:
 
-- **Shout** (`post_offer`): Post to the public order book. All traders can see the offer and compete to accept it. Maximizes liquidity but reveals your strategy to the entire market.
-- **Whisper** (`private_offer`): Send a P2P offer to a specific trader. Only the poster and target can see it. Reduces competition but limits the pool of potential counterparties.
+- **Shout** (`post_offer`): Post to the public order book. All traders see and can accept. Maximizes liquidity but reveals strategy.
+- **Whisper** (`private_offer`): P2P offer to a specific trader. Only poster and target see it. Reduces competition but limits counterparties.
 
-This creates a strategic tradeoff between **transparency and secrecy**. An agent holding scarce gold might whisper a favorable deal to one buyer rather than posting it publicly and triggering a bidding war. Conversely, an agent seeking a scarce item might post publicly to maximize their chances of finding a willing seller.
+Private offers appear as `[WHISPER]` in the target agent's order book. Other agents have no knowledge the offer exists.
 
-Private offers appear as `[WHISPER]` in the order book of the target agent. Other agents have no knowledge that the offer exists.
-
-### 2.6 Turn Structure
+### 2.5 Turn Structure
 
 Each round proceeds as follows:
 
@@ -275,27 +263,37 @@ where *E_A* is the expected score, *S_A* ∈ {0, 0.5, 1} is the actual outcome, 
 Each match proceeds as follows:
 
 1. Select a scenario
-2. Split agents 50/50 between two contestants (e.g., 6 agents → 3 each)
-3. **Randomly assign** contestants to agent slots (eliminates positional bias)
+2. Split agents 50/50 between two models (e.g., 6 agents → 3 haiku + 3 opus)
+3. **Randomly assign** models to agent slots (eliminates positional bias)
 4. Run the marketplace for the scenario's fixed number of rounds
 5. Compare average goal completion → determine winner
 6. Update ELO ratings
 
 ### 5.3 Tournament Protocol
 
-A full tournament runs all contestant pairs across scenarios, multiple times each. Ratings converge after approximately 15–20 matches.
+A full tournament runs both models across all three scenarios, multiple times each:
 
-### 5.4 Introducing New Contestants
+```
+Round 1:  gold_rush    → model_A:3 vs model_B:3   → B wins  → ELO: A=1484 B=1516
+Round 2:  water_crisis → model_A:4 vs model_B:4   → A wins  → ELO: A=1499 B=1501
+Round 3:  spice_wars   → model_A:5 vs model_B:5   → B wins  → ELO: A=1484 B=1516
+Round 4:  gold_rush    → model_A:3 vs model_B:3   → B wins  → ELO: A=1470 B=1530
+...
+```
 
-A key property of Elo ratings: **new contestants can be added at any time** without invalidating existing ratings. To benchmark a new model or strategy:
+Ratings converge after approximately 15–20 matches.
 
-1. Run it against one or more already-rated contestants across all scenarios
+### 5.4 Introducing New Models
+
+A key property of Elo ratings: **new models can be added at any time** without invalidating existing ratings. To benchmark a new model:
+
+1. Run it against one or more already-rated models across all scenarios
 2. After ~15–20 matches, its rating stabilizes
 3. No existing data needs to be re-run
 
-## 6. Quick Start
+This supports incremental evaluation of prompted variants, fine-tuned models, different reasoning strategies, or entirely different LLM providers.
 
-### Benchmark Mode (compare models)
+## 6. Quick Start
 
 ```bash
 # Single match
@@ -304,64 +302,20 @@ python3 -m barter_eval --eval gold_rush --models haiku:3,opus:3
 # Full tournament (all scenarios, 3 runs each)
 python3 -m barter_eval --eval all --models haiku,opus --runs 3
 
+# View ELO ratings
+python3 -m barter_eval --elo
+
+# List scenarios
+python3 -m barter_eval --list
+
+# Interactive dashboard with replay viewer
+python3 -m barter_eval --serve
+
 # Fresh start
 python3 -m barter_eval --eval all --models haiku,opus --runs 3 --clear
 ```
 
-### Arena Mode (compare strategies across models)
-
-```bash
-# All strategies, all scenarios, all on haiku
-python3 -m barter_eval --arena --eval all --runs 3
-
-# Cross-model arena: 3 strategies × 3 models = 9 contestants
-python3 -m barter_eval --arena --models haiku,sonnet,opus --eval gold_rush
-
-# Two strategies head-to-head
-python3 -m barter_eval --arena --strategies aggressive,cooperative --eval gold_rush
-
-# Submit a new strategy
-python3 -m barter_eval --submit "my_strat" "Trade aggressively for scarce items"
-```
-
-### Other Commands
-
-```bash
-python3 -m barter_eval --elo       # View ELO ratings
-python3 -m barter_eval --list      # List scenarios & strategies
-python3 -m barter_eval --serve     # Interactive dashboard with replay viewer
-python3 -m barter_eval --clear     # Reset all results and ratings
-```
-
-## 7. Built-in Strategies
-
-BarterBench ships with three prompt strategies for the arena:
-
-| Strategy | Style | Key Traits |
-|---|---|---|
-| **aggressive** | Exploitative | Demand 2:1 ratios, never give scarce items cheaply, move fast |
-| **cooperative** | Fair-minded | Post balanced offers, accept reasonable deals, build relationships |
-| **analytical** | Methodical | Analyze supply/demand, plan multi-hop chains, wait for good offers |
-
-Anyone can submit a new strategy — no code required, just a prompt. Strategies compete via pairwise ELO, with an optional cross-model dimension (run each strategy on haiku, sonnet, and opus to see which strategy-model combinations dominate).
-
-## 8. Information Model
-
-Each agent operates under **strict information isolation**:
-
-| Visible | Hidden |
-|---|---|
-| Own inventory and target | Other agents' inventories |
-| Public order book (offers posted by any agent) | Other agents' targets |
-| Private offers addressed to this agent (whispers) | Private offers between other agents |
-| Recent executed trades (public record) | Other agents' strategies and reasoning |
-| Round number / time remaining | Who sent whispers to whom (unless you're involved) |
-
-Agents never see each other's private state. Public information flows through the order book and executed trades. Private offers (whispers) are P2P — only the sender and recipient know the offer exists. Each agent turn is a **stateless LLM call** — no conversation history carries over between turns.
-
-The gossip system means agents must decide on every turn: **broadcast to the market (maximize counterparties) or whisper to a specific trader (hide your strategy)**. This information asymmetry is a key dimension of agent intelligence — the best strategies balance transparency and secrecy based on market conditions.
-
-## 9. Architecture
+## 7. Architecture
 
 ```
 barter_eval/
@@ -371,13 +325,11 @@ barter_eval/
 ├── elo.py            # ELO rating computation + persistence
 ├── eval.py           # CLI entry point, tournament orchestration
 ├── dashboard.html    # Dashboard: ELO leaderboard + trade replay viewer
-├── arena/            # Arena mode: prompt strategy competition
-│   ├── runner.py     # Arena orchestration with file-locked parallel runs
-│   └── strategies/   # Strategy prompt definitions (JSON)
+├── elo_ratings.json  # Current ELO ratings (auto-generated)
+├── match_log.json    # Match history with ELO deltas (auto-generated)
+├── results.json      # Full run data (auto-generated)
+├── runs/             # Individual run files
 └── scenarios/        # Scenario definitions (JSON)
-    ├── gold_rush.json
-    ├── water_crisis.json
-    └── spice_wars.json
 ```
 
 ### Adding new models
