@@ -538,7 +538,19 @@ const AGENT_EMOJI = [
   '\u{1F9D1}\u200D\u{1F373}','\u{1F469}\u200D\u{1F373}','\u{1F468}\u200D\u{1F373}',
   '\u{1F9D1}\u200D\u{1F3A8}',
 ];
-function gc(m) { return COLORS[m] || '#6b7280'; }
+function gc(m) {
+  // Check if m contains a model name for coloring
+  for (const [model, color] of Object.entries(COLORS)) {
+    if (m === model || m.endsWith(':' + model) || m.includes(':' + model)) return color;
+  }
+  // Hash-based color for strategy names
+  let h = 0;
+  for (let i = 0; i < m.length; i++) h = m.charCodeAt(i) + ((h << 5) - h);
+  return `hsl(${Math.abs(h) % 360}, 55%, 45%)`;
+}
+function getGoalCompletion(d) {
+  return d.strategy_goal_completion || d.model_goal_completion || {};
+}
 function itemStr(items) {
   return Object.entries(items).filter(([,v])=>v>0).map(([k,v])=>`${ITEM_EMOJI[k]||''} ${v} ${k}`).join(', ') || 'nothing';
 }
@@ -548,18 +560,41 @@ let currentRun = null, currentStep = 0, inventories = [], orderBook = [], playin
 
 // ---- Data ----
 async function loadData() {
+  // Load both benchmark and arena results
+  let benchData = [], arenaData = [];
   try {
     const r = await fetch('results.json');
-    allData = (await r.json()).filter(d => !d.error);
-  } catch { allData = []; }
+    benchData = (await r.json()).filter(d => !d.error);
+  } catch { benchData = []; }
+  try {
+    const r = await fetch('arena/results.json');
+    arenaData = (await r.json()).filter(d => !d.error);
+  } catch { arenaData = []; }
+  allData = [...benchData, ...arenaData];
+
+  // Merge ELO ratings from both sources
+  eloRatings = {};
   try {
     const r2 = await fetch('elo_ratings.json');
-    eloRatings = await r2.json();
-  } catch { eloRatings = {}; }
+    Object.assign(eloRatings, await r2.json());
+  } catch {}
+  try {
+    const r2 = await fetch('arena/elo_ratings.json');
+    Object.assign(eloRatings, await r2.json());
+  } catch {}
+
+  // Merge match logs
+  let benchLog = [], arenaLog = [];
   try {
     const r3 = await fetch('match_log.json');
-    matchLog = await r3.json();
-  } catch { matchLog = []; }
+    benchLog = await r3.json();
+  } catch {}
+  try {
+    const r3 = await fetch('arena/match_log.json');
+    arenaLog = await r3.json();
+  } catch {}
+  matchLog = [...benchLog, ...arenaLog];
+
   renderOverview();
   buildRunSelector();
 }
@@ -642,7 +677,7 @@ function renderChart() {
   // Points — one per model per run
   data.forEach((d,i) => {
     const cx = xS(i);
-    const mgc = d.model_goal_completion || {};
+    const mgc = getGoalCompletion(d) || {};
     Object.entries(mgc).forEach(([model, score]) => {
       const cy = yS(score);
       const c = gc(model);
@@ -652,7 +687,7 @@ function renderChart() {
   });
 
   // Legend
-  const models = [...new Set(allData.flatMap(d => Object.keys(d.model_goal_completion || {})))];
+  const models = [...new Set(allData.flatMap(d => Object.keys(getGoalCompletion(d) || {})))];
   models.forEach((m,i) => {
     const lx = p.l + i * 80;
     svg.innerHTML += `<circle cx="${lx}" cy="${H-20}" r="3.5" fill="${gc(m)}"/>`;
@@ -666,7 +701,7 @@ function renderLeaderboard() {
 
   const s = {};
   data.forEach(d => {
-    const mgc = d.model_goal_completion || {};
+    const mgc = getGoalCompletion(d) || {};
     Object.entries(mgc).forEach(([model, score]) => {
       if (!s[model]) s[model] = { scores: [], trades: [], invalids: [] };
       s[model].scores.push(score);
@@ -709,7 +744,7 @@ function renderHistory() {
 
   el.innerHTML = `<thead><tr><th>#</th><th>scenario</th><th>result</th><th class="r">goal %</th><th class="r">trades</th><th class="r">time</th></tr></thead>
   <tbody>${data.map((d,i) => {
-    const mgc = d.model_goal_completion || {};
+    const mgc = getGoalCompletion(d) || {};
     const models = Object.keys(mgc);
     let resultStr = '';
     if (models.length === 2) {
@@ -874,12 +909,16 @@ function renderEvent(h) {
     <span class="ev-agent" style="color:${color}">T${h.agent} ${label}</span>
     <span class="ev-action ${actionClass}">${h.action.replace(/_/g,' ')}</span>
     <span class="ev-detail">${detail}</span>`;
-  const reasoning = h.reasoning || h.message || '';
-  if (reasoning) {
-    div.onclick = () => showReasoning(h.agent, label, color, reasoning);
+  const reasoning = h.reasoning || '';
+  const message = h.message || '';
+  const thoughtText = reasoning ? `${reasoning}\n\nAction message: ${message}` : message;
+  if (thoughtText) {
+    div.onclick = () => showReasoning(h.agent, label, color, thoughtText);
   }
   log.appendChild(div);
   log.scrollTop = log.scrollHeight;
+  // Auto-show reasoning for latest event
+  if (thoughtText) showReasoning(h.agent, label, color, thoughtText);
 }
 
 function showReasoning(agentIdx, label, color, text) {
