@@ -1730,6 +1730,10 @@ async function loadData() {
 
   if (runs.length && (!currentRun || (hasRunningExp && runs.length > prevCount))) {
     selectRun(runs.length - 1);
+    // Auto-play new runs that arrive during active experiments
+    if (hasRunningExp && runs.length > prevCount && !playing) {
+      playAll();
+    }
   }
 }
 
@@ -2910,6 +2914,84 @@ function renderParamPanel() {
 }
 
 // ============================================================
+// LIVE MATCH STREAMING
+// ============================================================
+let liveMatch = null;
+let liveStepCount = 0;
+
+async function pollLiveMatch() {
+  try {
+    const r = await fetch('live_match.json?t=' + Date.now());
+    if (!r.ok) { liveMatch = null; return; }
+    const data = await r.json();
+    if (!data || !data.history || !data.history.length) { liveMatch = null; return; }
+
+    const isNew = !liveMatch || data.scenario !== liveMatch.scenario;
+    liveMatch = data;
+
+    // Build a run-like object from live data
+    const liveRun = {
+      scenario: data.scenario,
+      model_assignments: data.model_assignments || [],
+      strategy_assignments: data.strategy_assignments || [],
+      initial_inventories: data.initial_inventories || [],
+      targets: data.targets || [],
+      history: data.history || [],
+      num_trades: data.num_trades || 0,
+      _live: true,
+    };
+
+    // If this is the first detection or a new match, select it
+    if (isNew || !currentRun || !currentRun._live) {
+      if (goalChartInstance) { goalChartInstance.destroy(); goalChartInstance = null; }
+      currentRun = liveRun;
+      currentStep = 0;
+      playing = false;
+      liveStepCount = 0;
+      inventories = (liveRun.initial_inventories || []).map(inv => ({...inv}));
+      orderBookState = [];
+      const targets = liveRun.targets || [];
+      goalHistory = [{
+        step: 0,
+        completions: inventories.map((inv, i) => computeCompletion(inv, targets[i] || {}))
+      }];
+      renderAgents();
+      renderOrderBook();
+      document.getElementById('eventLog').innerHTML = '';
+      _lastRenderedRound = -1;
+      document.getElementById('rpText').innerHTML = '<span class="rp-empty">Live match in progress...</span>';
+      document.getElementById('rpAgent').textContent = '';
+      if (scene) scene.loadRun(liveRun);
+      renderParamPanel();
+    }
+
+    // Apply any new events since last poll
+    if (currentRun && currentRun._live) {
+      currentRun = liveRun; // update with latest data
+      const newEvents = liveRun.history.slice(liveStepCount);
+      const targets = liveRun.targets || [];
+      for (const h of newEvents) {
+        applyAction(h);
+        goalHistory.push({
+          step: liveStepCount + 1,
+          completions: inventories.map((inv, j) => computeCompletion(inv, targets[j] || {}))
+        });
+        renderEvent(h);
+        liveStepCount++;
+      }
+      currentStep = liveStepCount;
+      updateAgents();
+      renderOrderBook();
+      renderGoalChart();
+      updateStep();
+      renderSummary(true);
+    }
+  } catch {
+    liveMatch = null;
+  }
+}
+
+// ============================================================
 // INIT
 // ============================================================
 initScene();
@@ -2917,7 +2999,9 @@ loadData();
 loadScenarios();
 setInterval(loadData, 5000);
 setInterval(pollExperiments, 3000);
+setInterval(pollLiveMatch, 2000);
 pollExperiments();
+pollLiveMatch();
 </script>
 </body>
 </html>

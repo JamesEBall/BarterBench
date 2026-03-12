@@ -82,12 +82,9 @@ class MarketEngine:
         ]
 
     def _write_live(self, initial_inventories, start_time, status="running"):
-        """Write current match state to live_<scenario>.json for dashboard streaming."""
+        """Write current match state to live_match.json for dashboard streaming."""
         try:
-            live_dir = Path(__file__).parent / "arena"
-            live_dir.mkdir(parents=True, exist_ok=True)
-            scenario_name = self.scenario.get("name", "match").replace(" ", "_")
-            live_file = live_dir / f"live_{scenario_name}.json"
+            live_file = Path(__file__).parent / "live_match.json"
             agent_results = []
             for i in range(self.num_agents):
                 ar = {
@@ -419,8 +416,13 @@ class MarketEngine:
             if all_complete:
                 break
 
-        # Mark live file as completed
-        self._write_live(initial_inventories, start_time, status="completed")
+        # Remove live file when match ends
+        try:
+            live_file = Path(__file__).parent / "live_match.json"
+            if live_file.exists():
+                live_file.unlink()
+        except Exception:
+            pass
 
         elapsed = time.time() - start_time
 

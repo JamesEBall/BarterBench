@@ -17,8 +17,14 @@ arena/elo_ratings.json
 arena/match_log.json
 arena/runs/
 arena/live_*.json
+live_match.json
 arena/*.lock
 uv.lock
+
+# Experiments
+experiments.json
+experiments.json.lock
+results.json.lock
 
 # Benchmark
 benchmark_results.json
