@@ -2727,7 +2727,10 @@ function renderExperiments() {
 
     let progressBar = '';
     if (exp.status === 'running') {
-      progressBar = `<div class="exp-progress"><div class="exp-progress-fill" style="width:${pct}%"></div></div>`;
+      const cur = progress.current_run || 0;
+      const tot = progress.total_runs || 0;
+      progressBar = `<div class="exp-progress"><div class="exp-progress-fill" style="width:${pct}%"></div></div>
+        <div style="font-size:0.65rem;color:var(--text3);margin-top:2px">${cur}/${tot} runs (${Math.round(pct)}%)</div>`;
     }
 
     let controls = '';
@@ -2972,6 +2975,7 @@ async function pollLiveMatch() {
       const targets = liveRun.targets || [];
       for (const h of newEvents) {
         applyAction(h);
+        if (scene) scene.advanceEvent(h);
         goalHistory.push({
           step: liveStepCount + 1,
           completions: inventories.map((inv, j) => computeCompletion(inv, targets[j] || {}))

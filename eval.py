@@ -686,6 +686,13 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         parallel = config.get("parallel", 1)
         anchor = config.get("anchor")
 
+        # Calculate total runs (scenario "all" multiplies by number of eval scenarios)
+        if scenario == "all":
+            num_scenarios = len(list_scenarios())
+            total_runs = runs * num_scenarios
+        else:
+            total_runs = runs
+
         # Create experiment entry
         exp_id = f"exp_{int(time.time())}_{random.randint(1000,9999)}"
         exp = {
@@ -705,7 +712,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                 "parallel": parallel,
                 "anchor": anchor,
             },
-            "progress": {"current_run": 0, "total_runs": runs},
+            "progress": {"current_run": 0, "total_runs": total_runs},
         }
         experiments = _load_experiments()
         experiments.append(exp)
@@ -750,7 +757,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             # Start monitoring thread
             t = threading.Thread(
                 target=_monitor_experiment,
-                args=(exp_id, proc, scenario, runs),
+                args=(exp_id, proc, scenario, total_runs),
                 daemon=True,
             )
             t.start()
@@ -930,7 +937,10 @@ def _monitor_experiment(exp_id, proc, scenario, total_runs):
                 try:
                     with open(rf) as f:
                         data = json.load(f)
-                    count += sum(1 for r in data if r.get("scenario") == scenario)
+                    if scenario == "all":
+                        count += len(data)
+                    else:
+                        count += sum(1 for r in data if r.get("scenario") == scenario)
                 except Exception:
                     pass
         return count
