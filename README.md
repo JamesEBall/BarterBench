@@ -1,8 +1,11 @@
 # BarterBench
 
+![BarterBench Dashboard](docs/dashboard.png)
+
 A competitive marketplace benchmark for AI agents with ELO ratings. N agents trade scarce resources through an order book across fixed rounds. Models are pitted head-to-head and rated via pairwise ELO — new models can be introduced at any time without re-running existing matches. Works with any LLM or agent framework.
 
-**Two modes:**
+**Three modes:**
+- **Eval Suite** — one-click standardized evaluation. Runs a model against a haiku anchor across all 4 scenarios (12 runs total), producing ELO + composite scores. `python3 eval.py --suite --models sonnet`
 - **Benchmark** — compare models head-to-head (haiku vs sonnet vs opus)
 - **Arena** — compare prompt strategies across models. Same benchmark, but contestants are (strategy, model) pairs. "Who can write the best barter agent prompt?"
 
@@ -336,6 +339,20 @@ A key property of Elo ratings: **new contestants can be added at any time** with
 
 ## 6. Quick Start
 
+### Eval Suite (standardized one-click evaluation)
+
+Fixed battery: each test model vs haiku anchor across all 4 eval-compatible scenarios (gold_rush, water_crisis, spice_wars, grand_bazaar), 3 runs each. Produces comparable ELO + composite scores.
+
+```bash
+# Evaluate sonnet (12 runs: 4 scenarios × 3 runs)
+python3 eval.py --suite --models sonnet
+
+# Evaluate multiple models (24 runs: 4 scenarios × 3 runs × 2 models)
+python3 eval.py --suite --models sonnet,opus
+```
+
+Each model is always paired 1:1 against haiku — never against each other in the same run. Agent counts per scenario: gold_rush (3v3), water_crisis (4v4), spice_wars (5v5), grand_bazaar (6v6).
+
 ### Hybrid Anchor Benchmark (fast leaderboard)
 
 One big scenario, half agents are a cheap anchor model (default: Haiku), the rest are test models. One run = one leaderboard. 3–5 runs for stability instead of 15–20 pairwise matches.
@@ -385,7 +402,7 @@ python3 eval.py --submit "my_strat" "Trade aggressively for scarce items"
 ```bash
 python3 eval.py --elo       # View ELO ratings
 python3 eval.py --list      # List scenarios & strategies
-python3 eval.py --serve     # Interactive dashboard with replay viewer
+python3 eval.py --serve     # Dashboard with Eval Suite launcher + replay viewer
 python3 eval.py --clear     # Reset all results and ratings
 ```
 

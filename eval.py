@@ -1,12 +1,19 @@
 """CLI entry point: run marketplace eval across scenarios."""
 
 import argparse
+import fcntl
 import json
 import os
 import random
+import signal
+import subprocess
 import sys
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from datetime import datetime, timezone
+from http.server import SimpleHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
 from agent import MarketAgent
@@ -18,6 +25,37 @@ SCENARIOS_DIR = Path(__file__).parent / "scenarios"
 RESULTS_FILE = Path(__file__).parent / "results.json"
 RUNS_DIR = Path(__file__).parent / "runs"
 BENCHMARK_RESULTS_FILE = Path(__file__).parent / "benchmark_results.json"
+EXPERIMENTS_FILE = Path(__file__).parent / "experiments.json"
+
+
+# ---- File locking for parallel runs ----
+
+@contextmanager
+def _file_lock(path):
+    """Acquire an exclusive file lock for atomic read-modify-write."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lock_path = Path(str(path) + ".lock")
+    lock_fd = open(lock_path, "w")
+    try:
+        fcntl.flock(lock_fd, fcntl.LOCK_EX)
+        yield
+    finally:
+        fcntl.flock(lock_fd, fcntl.LOCK_UN)
+        lock_fd.close()
+
+
+def _locked_append_result(entry, results_file):
+    """Thread-safe append of a result entry to a JSON array file."""
+    with _file_lock(results_file):
+        if results_file.exists():
+            with open(results_file) as f:
+                results = json.load(f)
+        else:
+            results = []
+        results.append(entry)
+        with open(results_file, "w") as f:
+            json.dump(results, f, indent=2)
+    return results
 
 
 # ---- Scenario helpers ----
@@ -253,7 +291,8 @@ def print_benchmark_leaderboard(run_entries, anchor):
     print("=" * 80)
 
 
-def run_benchmark(scenario_name, anchor, test_models, runs, verbose):
+def run_benchmark(scenario_name, anchor, test_models, runs, verbose,
+                  simultaneous=False, parallel=1):
     """Run benchmark mode: test models against anchor in a single scenario."""
     scenario = load_scenario(scenario_name)
     num_agents = len(scenario["agents"])
@@ -264,7 +303,13 @@ def run_benchmark(scenario_name, anchor, test_models, runs, verbose):
     print(f"  Anchor: {anchor} ({config[0][1]} agents)")
     test_info = ", ".join(f"{m}({c})" for m, c in config[1:])
     print(f"  Test models: {test_info}")
-    print(f"  Agents: {num_agents} | Rounds: {scenario.get('max_rounds', 10)} | Runs: {runs}")
+    flags = []
+    if simultaneous:
+        flags.append("simultaneous")
+    if parallel > 1:
+        flags.append(f"parallel={parallel}")
+    flag_str = f" | {', '.join(flags)}" if flags else ""
+    print(f"  Agents: {num_agents} | Rounds: {scenario.get('max_rounds', 10)} | Runs: {runs}{flag_str}")
     print()
 
     if BENCHMARK_RESULTS_FILE.exists():
@@ -276,18 +321,25 @@ def run_benchmark(scenario_name, anchor, test_models, runs, verbose):
     run_offset = len(all_results)
     run_entries = []
 
-    for run_num in range(runs):
+    def _run_one(run_num):
         run_id = run_offset + run_num + 1
         print(f"  Run {run_num + 1}/{runs}")
-        entry = run_single(scenario_name, scenario, config, config_str, run_id, verbose)
+        entry = run_single(scenario_name, scenario, config, config_str, run_id, verbose,
+                           simultaneous=simultaneous, live_updates=(parallel <= 1))
         entry["mode"] = "benchmark"
         entry["anchor_model"] = anchor
-        run_entries.append(entry)
-        all_results.append(entry)
-
-        with open(BENCHMARK_RESULTS_FILE, "w") as f:
-            json.dump(all_results, f, indent=2)
+        _locked_append_result(entry, BENCHMARK_RESULTS_FILE)
         save_run_file(entry, scenario_name)
+        return entry
+
+    if parallel > 1:
+        with ThreadPoolExecutor(max_workers=parallel) as pool:
+            futures = [pool.submit(_run_one, i) for i in range(runs)]
+            run_entries = [f.result() for f in futures]
+    else:
+        for run_num in range(runs):
+            entry = _run_one(run_num)
+            run_entries.append(entry)
 
     print_benchmark_leaderboard(run_entries, anchor)
     print(f"\nResults saved to {BENCHMARK_RESULTS_FILE}")
@@ -295,7 +347,8 @@ def run_benchmark(scenario_name, anchor, test_models, runs, verbose):
 
 # ---- Run a single match (model vs model) ----
 
-def run_single(scenario_name, scenario, model_config, model_config_str, run_id, verbose):
+def run_single(scenario_name, scenario, model_config, model_config_str, run_id, verbose,
+               simultaneous=False, live_updates=True):
     """Run a single marketplace match. Returns the result entry."""
     num_agents = len(scenario["agents"])
     model_assignments = assign_models(model_config, num_agents)
@@ -304,11 +357,13 @@ def run_single(scenario_name, scenario, model_config, model_config_str, run_id, 
         for i in range(num_agents)
     ]
 
-    print(f"  [{scenario_name}] models: {' '.join(model_assignments)}")
+    mode_str = " [simultaneous]" if simultaneous else ""
+    print(f"  [{scenario_name}]{mode_str} models: {' '.join(model_assignments)}")
     print(f"  Running marketplace...", end="", flush=True)
 
     try:
-        engine = MarketEngine(scenario, agents)
+        engine = MarketEngine(scenario, agents, simultaneous=simultaneous,
+                              run_id=run_id, live_updates=live_updates)
         result = engine.run()
         result["scenario_data"] = scenario
         metrics = compute_metrics(result)
@@ -382,7 +437,8 @@ def run_single(scenario_name, scenario, model_config, model_config_str, run_id, 
 
 # ---- Orchestration modes ----
 
-def run_eval(scenario_name, model_config_str, runs, verbose):
+def run_eval(scenario_name, model_config_str, runs, verbose,
+             simultaneous=False, parallel=1):
     """Run eval for a single scenario."""
     scenario = load_scenario(scenario_name)
     num_agents = len(scenario["agents"])
@@ -397,23 +453,42 @@ def run_eval(scenario_name, model_config_str, runs, verbose):
     results = load_existing_results()
     run_offset = len(results)
 
+    flags = []
+    if simultaneous:
+        flags.append("simultaneous")
+    if parallel > 1:
+        flags.append(f"parallel={parallel}")
+    flag_str = f" | {', '.join(flags)}" if flags else ""
     print(f"Marketplace Eval: {scenario_name}")
-    print(f"  Agents: {num_agents} | Models: {model_config_str} | Rounds: {scenario.get('max_rounds', 10)} | Runs: {runs}")
+    print(f"  Agents: {num_agents} | Models: {model_config_str} | Rounds: {scenario.get('max_rounds', 10)} | Runs: {runs}{flag_str}")
     print()
 
-    for run_num in range(runs):
+    def _run_one(run_num):
         run_id = run_offset + run_num + 1
-        entry = run_single(scenario_name, scenario, model_config, model_config_str, run_id, verbose)
-        results.append(entry)
-        save_results(results)
+        entry = run_single(scenario_name, scenario, model_config, model_config_str, run_id, verbose,
+                           simultaneous=simultaneous, live_updates=(parallel <= 1))
+        _locked_append_result(entry, RESULTS_FILE)
         save_run_file(entry, scenario_name)
+        return entry
 
+    if parallel > 1:
+        with ThreadPoolExecutor(max_workers=parallel) as pool:
+            futures = [pool.submit(_run_one, i) for i in range(runs)]
+            run_entries = [f.result() for f in futures]
+    else:
+        run_entries = []
+        for run_num in range(runs):
+            entry = _run_one(run_num)
+            run_entries.append(entry)
+
+    results = load_existing_results()
     print_leaderboard(results)
     print_elo_leaderboard()
     print(f"\nResults saved to {RESULTS_FILE}")
 
 
-def run_tournament(model_a, model_b, runs_per_scenario, verbose):
+def run_tournament(model_a, model_b, runs_per_scenario, verbose,
+                   simultaneous=False, parallel=1):
     """Run a full tournament: model_a vs model_b across all scenarios."""
     scenarios = list_scenarios()
     if not scenarios:
@@ -424,10 +499,16 @@ def run_tournament(model_a, model_b, runs_per_scenario, verbose):
     run_offset = len(results)
 
     total_matches = len(scenarios) * runs_per_scenario
+    flags = []
+    if simultaneous:
+        flags.append("simultaneous")
+    if parallel > 1:
+        flags.append(f"parallel={parallel}")
+    flag_str = f" | {', '.join(flags)}" if flags else ""
     print(f"Tournament: {model_a} vs {model_b}")
     print(f"  Scenarios: {', '.join(scenarios)}")
     print(f"  Runs per scenario: {runs_per_scenario}")
-    print(f"  Total matches: {total_matches}")
+    print(f"  Total matches: {total_matches}{flag_str}")
     print()
 
     match_num = 0
@@ -440,28 +521,574 @@ def run_tournament(model_a, model_b, runs_per_scenario, verbose):
 
         print(f"--- {scenario_name} ({num_agents} agents, {scenario.get('max_rounds', 10)} rounds) ---")
 
-        for run_num in range(runs_per_scenario):
+        def _run_one(run_num):
+            nonlocal match_num
             match_num += 1
             run_id = run_offset + match_num
             print(f"\n  Match {match_num}/{total_matches}")
-
-            entry = run_single(scenario_name, scenario, model_config, model_config_str, run_id, verbose)
-            results.append(entry)
-            save_results(results)
+            entry = run_single(scenario_name, scenario, model_config, model_config_str, run_id, verbose,
+                               simultaneous=simultaneous, live_updates=(parallel <= 1))
+            _locked_append_result(entry, RESULTS_FILE)
             save_run_file(entry, scenario_name)
+            return entry
+
+        if parallel > 1:
+            with ThreadPoolExecutor(max_workers=parallel) as pool:
+                futures = [pool.submit(_run_one, i) for i in range(runs_per_scenario)]
+                [f.result() for f in futures]
+        else:
+            for run_num in range(runs_per_scenario):
+                _run_one(run_num)
 
         print()
 
+    results = load_existing_results()
     print_leaderboard(results)
     print_elo_leaderboard()
     print(f"\nResults saved to {RESULTS_FILE}")
 
 
-# ---- Dashboard ----
+# ---- Experiments management ----
+
+def _load_experiments():
+    """Load experiments list from experiments.json."""
+    with _file_lock(EXPERIMENTS_FILE):
+        if EXPERIMENTS_FILE.exists():
+            with open(EXPERIMENTS_FILE) as f:
+                return json.load(f)
+        return []
+
+
+def _save_experiments(experiments):
+    """Save experiments list to experiments.json."""
+    with _file_lock(EXPERIMENTS_FILE):
+        with open(EXPERIMENTS_FILE, "w") as f:
+            json.dump(experiments, f, indent=2)
+
+
+def _update_experiment(exp_id, updates):
+    """Update a single experiment by ID."""
+    with _file_lock(EXPERIMENTS_FILE):
+        if EXPERIMENTS_FILE.exists():
+            with open(EXPERIMENTS_FILE) as f:
+                experiments = json.load(f)
+        else:
+            experiments = []
+        for exp in experiments:
+            if exp["id"] == exp_id:
+                exp.update(updates)
+                break
+        with open(EXPERIMENTS_FILE, "w") as f:
+            json.dump(experiments, f, indent=2)
+
+
+def _get_scenario_metadata():
+    """Return list of scenario metadata dicts."""
+    files = sorted(SCENARIOS_DIR.glob("*.json"))
+    result = []
+    for f in files:
+        with open(f) as fh:
+            data = json.load(fh)
+            if data["agents"][0].get("target") is not None:
+                scarcity = data.get("scarcity", {})
+                scarcity_summary = ", ".join(
+                    f"{k} ({v['ratio']:.0%})" for k, v in scarcity.items()
+                ) if scarcity else "none"
+                result.append({
+                    "name": data["name"],
+                    "num_agents": len(data["agents"]),
+                    "max_rounds": data.get("max_rounds", 10),
+                    "description": data.get("description", ""),
+                    "scarcity": scarcity_summary,
+                })
+    return result
+
+
+# ---- Dashboard HTTP handler ----
+
+# Track active subprocess processes in server memory for cancel
+_active_processes = {}  # exp_id -> Popen
+
+
+class DashboardHandler(SimpleHTTPRequestHandler):
+    """Custom HTTP handler with API endpoints for experiment management."""
+
+    def log_message(self, format, *args):
+        """Suppress default request logging."""
+        pass
+
+    def _send_json(self, data, status=200):
+        body = json.dumps(data).encode()
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _read_body(self):
+        length = int(self.headers.get("Content-Length", 0))
+        return json.loads(self.rfile.read(length)) if length else {}
+
+    def do_GET(self):
+        if self.path == "/api/experiments":
+            self._handle_get_experiments()
+        elif self.path == "/api/scenarios":
+            self._handle_get_scenarios()
+        else:
+            super().do_GET()
+
+    def do_POST(self):
+        if self.path == "/api/launch":
+            self._handle_launch()
+        elif self.path == "/api/cancel":
+            self._handle_cancel()
+        elif self.path == "/api/suite":
+            self._handle_suite()
+        else:
+            self.send_error(404)
+
+    def _handle_get_experiments(self):
+        experiments = _load_experiments()
+        # Refresh stale running statuses
+        for exp in experiments:
+            if exp["status"] == "running":
+                pid = exp.get("pid")
+                if pid and exp["id"] not in _active_processes:
+                    # Process was tracked but server restarted — check if PID still exists
+                    try:
+                        os.kill(pid, 0)
+                    except OSError:
+                        exp["status"] = "completed"
+                        exp["completed_at"] = datetime.now(timezone.utc).isoformat()
+        _save_experiments(experiments)
+        self._send_json(experiments)
+
+    def _handle_get_scenarios(self):
+        self._send_json(_get_scenario_metadata())
+
+    def _handle_launch(self):
+        try:
+            self._do_handle_launch()
+        except Exception as e:
+            print(f"[server] Launch error: {e}")
+            import traceback; traceback.print_exc()
+            self._send_json({"error": str(e)}, 500)
+
+    def _do_handle_launch(self):
+        body = self._read_body()
+        config = body.get("config", {})
+
+        mode = config.get("mode", "eval")
+        scenario = config.get("scenario", "gold_rush")
+        models = config.get("models", "haiku:6")
+        runs = config.get("runs", 1)
+        simultaneous = config.get("simultaneous", False)
+        parallel = config.get("parallel", 1)
+        anchor = config.get("anchor")
+
+        # Create experiment entry
+        exp_id = f"exp_{int(time.time())}_{random.randint(1000,9999)}"
+        exp = {
+            "id": exp_id,
+            "status": "queued",
+            "pid": None,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "started_at": None,
+            "completed_at": None,
+            "error": None,
+            "config": {
+                "mode": mode,
+                "scenario": scenario,
+                "models": models,
+                "runs": runs,
+                "simultaneous": simultaneous,
+                "parallel": parallel,
+                "anchor": anchor,
+            },
+            "progress": {"current_run": 0, "total_runs": runs},
+        }
+        experiments = _load_experiments()
+        experiments.append(exp)
+        _save_experiments(experiments)
+
+        # Build CLI command
+        cmd = [sys.executable, str(Path(__file__).resolve())]
+        if mode == "benchmark":
+            cmd += ["--benchmark"]
+            if anchor:
+                cmd += ["--anchor", anchor]
+            # For benchmark, models should be test models (not anchor)
+            cmd += ["--models", models]
+            cmd += ["--eval", scenario]
+        elif mode == "arena":
+            cmd += ["--arena", "--eval", scenario]
+        else:
+            cmd += ["--eval", scenario, "--models", models]
+
+        cmd += ["--runs", str(runs)]
+        if simultaneous:
+            cmd += ["--simultaneous"]
+        if parallel > 1:
+            cmd += ["--parallel", str(parallel)]
+
+        # Spawn subprocess
+        print(f"[server] Launching experiment {exp_id}: {' '.join(cmd)}")
+        try:
+            proc = subprocess.Popen(
+                cmd,
+                env=os.environ.copy(),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+            )
+            _active_processes[exp_id] = proc
+            _update_experiment(exp_id, {
+                "status": "running",
+                "pid": proc.pid,
+                "started_at": datetime.now(timezone.utc).isoformat(),
+            })
+
+            # Start monitoring thread
+            t = threading.Thread(
+                target=_monitor_experiment,
+                args=(exp_id, proc, scenario, runs),
+                daemon=True,
+            )
+            t.start()
+
+            print(f"[server] Experiment {exp_id} started (pid={proc.pid})")
+            self._send_json({"id": exp_id, "status": "running"})
+        except Exception as e:
+            print(f"[server] Experiment {exp_id} failed to start: {e}")
+            _update_experiment(exp_id, {
+                "status": "failed",
+                "error": str(e),
+                "completed_at": datetime.now(timezone.utc).isoformat(),
+            })
+            self._send_json({"id": exp_id, "status": "failed", "error": str(e)}, 500)
+
+    def _handle_cancel(self):
+        try:
+            self._do_handle_cancel()
+        except Exception as e:
+            print(f"[server] Cancel error: {e}")
+            self._send_json({"error": str(e)}, 500)
+
+    def _do_handle_cancel(self):
+        body = self._read_body()
+        exp_id = body.get("id", "")
+
+        proc = _active_processes.get(exp_id)
+        if proc:
+            try:
+                proc.terminate()
+                proc.wait(timeout=5)
+            except Exception:
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
+            _active_processes.pop(exp_id, None)
+
+        _update_experiment(exp_id, {
+            "status": "cancelled",
+            "completed_at": datetime.now(timezone.utc).isoformat(),
+        })
+        self._send_json({"id": exp_id, "status": "cancelled"})
+
+    def _handle_suite(self):
+        try:
+            self._do_handle_suite()
+        except Exception as e:
+            print(f"[server] Suite error: {e}")
+            import traceback; traceback.print_exc()
+            self._send_json({"error": str(e)}, 500)
+
+    def _do_handle_suite(self):
+        body = self._read_body()
+        models_str = body.get("models", "sonnet")
+        test_models = [m.strip() for m in models_str.split(",") if m.strip()]
+
+        total_runs = len(SUITE_SCENARIOS) * SUITE_RUNS_PER_SCENARIO * len(test_models)
+
+        exp_id = f"exp_{int(time.time())}_{random.randint(1000,9999)}"
+        exp = {
+            "id": exp_id,
+            "status": "queued",
+            "pid": None,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "started_at": None,
+            "completed_at": None,
+            "error": None,
+            "config": {
+                "mode": "suite",
+                "scenario": "all (suite)",
+                "models": models_str,
+                "runs": total_runs,
+                "simultaneous": False,
+                "parallel": 1,
+                "anchor": SUITE_ANCHOR,
+            },
+            "progress": {"current_run": 0, "total_runs": total_runs},
+        }
+        experiments = _load_experiments()
+        experiments.append(exp)
+        _save_experiments(experiments)
+
+        cmd = [sys.executable, str(Path(__file__).resolve()),
+               "--suite", "--models", models_str]
+
+        print(f"[server] Launching suite {exp_id}: {' '.join(cmd)}")
+        try:
+            proc = subprocess.Popen(
+                cmd,
+                env=os.environ.copy(),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+            )
+            _active_processes[exp_id] = proc
+            _update_experiment(exp_id, {
+                "status": "running",
+                "pid": proc.pid,
+                "started_at": datetime.now(timezone.utc).isoformat(),
+            })
+
+            t = threading.Thread(
+                target=_monitor_suite_experiment,
+                args=(exp_id, proc, total_runs),
+                daemon=True,
+            )
+            t.start()
+
+            print(f"[server] Suite {exp_id} started (pid={proc.pid})")
+            self._send_json({"id": exp_id, "status": "running"})
+        except Exception as e:
+            print(f"[server] Suite {exp_id} failed to start: {e}")
+            _update_experiment(exp_id, {
+                "status": "failed",
+                "error": str(e),
+                "completed_at": datetime.now(timezone.utc).isoformat(),
+            })
+            self._send_json({"id": exp_id, "status": "failed", "error": str(e)}, 500)
+
+
+def _monitor_suite_experiment(exp_id, proc, total_runs):
+    """Monitor a suite experiment by counting new results across all scenarios."""
+    def _count_results():
+        count = 0
+        if RESULTS_FILE.exists():
+            try:
+                with open(RESULTS_FILE) as f:
+                    data = json.load(f)
+                count += sum(1 for r in data if r.get("mode") == "suite")
+            except Exception:
+                pass
+        return count
+
+    baseline_count = _count_results()
+
+    while proc.poll() is None:
+        time.sleep(2)
+        new_count = _count_results() - baseline_count
+        _update_experiment(exp_id, {
+            "progress": {"current_run": min(new_count, total_runs), "total_runs": total_runs},
+        })
+
+    _active_processes.pop(exp_id, None)
+    exit_code = proc.returncode
+    final_count = _count_results() - baseline_count
+
+    if exit_code == 0:
+        _update_experiment(exp_id, {
+            "status": "completed",
+            "completed_at": datetime.now(timezone.utc).isoformat(),
+            "progress": {"current_run": final_count, "total_runs": total_runs},
+        })
+    elif exit_code == -signal.SIGTERM or exit_code == -signal.SIGKILL:
+        pass
+    else:
+        error_msg = f"Process exited with code {exit_code}"
+        try:
+            output = proc.stdout.read().decode(errors="replace")[-500:]
+            if output.strip():
+                error_msg += f": {output.strip()}"
+        except Exception:
+            pass
+        _update_experiment(exp_id, {
+            "status": "failed",
+            "error": error_msg,
+            "completed_at": datetime.now(timezone.utc).isoformat(),
+        })
+
+
+def _monitor_experiment(exp_id, proc, scenario, total_runs):
+    """Monitor a running experiment subprocess, updating progress."""
+    # Count results matching this scenario that exist before we started
+    def _count_results():
+        count = 0
+        for rf in [RESULTS_FILE, BENCHMARK_RESULTS_FILE]:
+            if rf.exists():
+                try:
+                    with open(rf) as f:
+                        data = json.load(f)
+                    count += sum(1 for r in data if r.get("scenario") == scenario)
+                except Exception:
+                    pass
+        return count
+
+    baseline_count = _count_results()
+
+    while proc.poll() is None:
+        time.sleep(2)
+        # Update progress by counting new results
+        new_count = _count_results() - baseline_count
+        _update_experiment(exp_id, {
+            "progress": {"current_run": min(new_count, total_runs), "total_runs": total_runs},
+        })
+
+    # Process exited
+    _active_processes.pop(exp_id, None)
+    exit_code = proc.returncode
+    final_count = _count_results() - baseline_count
+
+    if exit_code == 0:
+        _update_experiment(exp_id, {
+            "status": "completed",
+            "completed_at": datetime.now(timezone.utc).isoformat(),
+            "progress": {"current_run": final_count, "total_runs": total_runs},
+        })
+    elif exit_code == -signal.SIGTERM or exit_code == -signal.SIGKILL:
+        # Already marked cancelled by _handle_cancel
+        pass
+    else:
+        # Try to capture error output
+        error_msg = f"Process exited with code {exit_code}"
+        try:
+            output = proc.stdout.read().decode(errors="replace")[-500:]
+            if output.strip():
+                error_msg += f": {output.strip()}"
+        except Exception:
+            pass
+        _update_experiment(exp_id, {
+            "status": "failed",
+            "error": error_msg,
+            "completed_at": datetime.now(timezone.utc).isoformat(),
+        })
+
+
+# ---- Eval Suite mode ----
+
+SUITE_SCENARIOS = ["gold_rush", "water_crisis", "spice_wars", "grand_bazaar"]
+SUITE_RUNS_PER_SCENARIO = 3
+SUITE_ANCHOR = "haiku"
+
+
+def run_suite(test_models, verbose):
+    """Run standardized eval suite: each test model vs haiku anchor across all scenarios."""
+    scenarios = SUITE_SCENARIOS
+    runs_per = SUITE_RUNS_PER_SCENARIO
+    anchor = SUITE_ANCHOR
+
+    total_per_model = len(scenarios) * runs_per
+    total = total_per_model * len(test_models)
+    print(f"Eval Suite: {', '.join(test_models)} vs {anchor} anchor")
+    print(f"  Scenarios: {', '.join(scenarios)}")
+    print(f"  Runs per scenario: {runs_per}")
+    print(f"  Total runs: {total}")
+    print()
+
+    results = load_existing_results()
+    run_offset = len(results)
+    match_num = 0
+
+    suite_entries = {}  # model -> list of entries
+
+    for test_model in test_models:
+        print(f"{'='*60}")
+        print(f"  Testing: {test_model} vs {anchor}")
+        print(f"{'='*60}")
+        suite_entries[test_model] = []
+
+        for scenario_name in scenarios:
+            scenario = load_scenario(scenario_name)
+            num_agents = len(scenario["agents"])
+            anchor_count = num_agents // 2
+            test_count = num_agents - anchor_count
+
+            model_config = [(anchor, anchor_count), (test_model, test_count)]
+            model_config_str = f"{anchor}:{anchor_count},{test_model}:{test_count}"
+
+            print(f"\n--- {scenario_name} ({num_agents} agents: {anchor}:{anchor_count}, {test_model}:{test_count}) ---")
+
+            for run_num in range(runs_per):
+                match_num += 1
+                run_id = run_offset + match_num
+                print(f"\n  Run {run_num + 1}/{runs_per} (match {match_num}/{total})")
+                entry = run_single(scenario_name, scenario, model_config, model_config_str,
+                                   run_id, verbose, simultaneous=False, live_updates=True)
+                entry["mode"] = "suite"
+                entry["anchor_model"] = anchor
+                _locked_append_result(entry, RESULTS_FILE)
+                save_run_file(entry, scenario_name)
+                suite_entries[test_model].append(entry)
+
+    # Print suite report card
+    print(f"\n{'='*80}")
+    print(f"  EVAL SUITE REPORT CARD")
+    print(f"{'='*80}")
+
+    elo_ratings = load_ratings()
+
+    for test_model in test_models:
+        entries = suite_entries[test_model]
+        valid = [e for e in entries if "error" not in e]
+
+        print(f"\n  {test_model} vs {anchor}")
+        print(f"  {'-'*40}")
+
+        # Per-scenario breakdown
+        wins, losses, draws = 0, 0, 0
+        all_test_scores = []
+        all_anchor_scores = []
+
+        for scenario_name in scenarios:
+            sc_entries = [e for e in valid if e["scenario"] == scenario_name]
+            if not sc_entries:
+                print(f"    {scenario_name}: no data")
+                continue
+            test_scores = [e["model_goal_completion"].get(test_model, 0) for e in sc_entries]
+            anchor_scores = [e["model_goal_completion"].get(anchor, 0) for e in sc_entries]
+            avg_test = sum(test_scores) / len(test_scores) * 100
+            avg_anchor = sum(anchor_scores) / len(anchor_scores) * 100
+            all_test_scores.extend(test_scores)
+            all_anchor_scores.extend(anchor_scores)
+
+            for ts, as_ in zip(test_scores, anchor_scores):
+                if ts - as_ >= 0.02:
+                    wins += 1
+                elif as_ - ts >= 0.02:
+                    losses += 1
+                else:
+                    draws += 1
+
+            print(f"    {scenario_name:<16} {test_model}={avg_test:.1f}%  {anchor}={avg_anchor:.1f}%")
+
+        # Composite
+        if all_test_scores:
+            composite = sum(all_test_scores) / len(all_test_scores) * 100
+            anchor_composite = sum(all_anchor_scores) / len(all_anchor_scores) * 100
+            print(f"\n    Composite:       {test_model}={composite:.1f}%  {anchor}={anchor_composite:.1f}%")
+            print(f"    W-L-D:           {wins}-{losses}-{draws}")
+            elo = elo_ratings.get(test_model, 1500)
+            anchor_elo = elo_ratings.get(anchor, 1500)
+            print(f"    ELO:             {test_model}={elo:.0f}  {anchor}={anchor_elo:.0f}")
+
+    print(f"\n{'='*80}")
+    print(f"\nResults saved to {RESULTS_FILE}")
+    print_elo_leaderboard()
+
 
 def serve_dashboard():
-    """Serve the dashboard on a local HTTP server."""
-    import http.server
+    """Serve the dashboard with API endpoints on a local HTTP server."""
     import webbrowser
 
     os.chdir(Path(__file__).parent)
@@ -470,8 +1097,7 @@ def serve_dashboard():
     print(f"Serving dashboard at http://localhost:{port}/dashboard.html")
     webbrowser.open(f"http://localhost:{port}/dashboard.html")
 
-    handler = http.server.SimpleHTTPRequestHandler
-    with http.server.HTTPServer(("", port), handler) as httpd:
+    with HTTPServer(("", port), DashboardHandler) as httpd:
         try:
             httpd.serve_forever()
         except KeyboardInterrupt:
@@ -510,6 +1136,14 @@ def main():
                         help="Benchmark mode: test models against a cheap anchor model in one big scenario")
     parser.add_argument("--anchor", type=str, default="haiku",
                         help="Anchor model for benchmark mode (default: haiku)")
+    # Eval suite
+    parser.add_argument("--suite", action="store_true",
+                        help="Run standardized eval suite against haiku anchor across all scenarios")
+    # Simultaneous + parallel
+    parser.add_argument("--simultaneous", action="store_true",
+                        help="Simultaneous mode: all agents act on same snapshot per round")
+    parser.add_argument("--parallel", type=int, default=1,
+                        help="Run N matches concurrently (default: 1)")
     args = parser.parse_args()
 
     if args.serve:
@@ -564,7 +1198,23 @@ def main():
         models = None
         if args.models:
             models = [m.strip().split(":")[0] for m in args.models.split(",")]
-        run_arena(strat_names, scenario, args.runs, args.verbose, models=models)
+        run_arena(strat_names, scenario, args.runs, args.verbose, models=models,
+                  simultaneous=args.simultaneous)
+        return
+
+    # ---- Eval suite mode ----
+    if args.suite:
+        if not args.models:
+            print("Error: --models required for suite mode.")
+            print("  Example: --suite --models sonnet")
+            print("  Example: --suite --models sonnet,opus")
+            sys.exit(1)
+        test_models = [m.strip().split(":")[0] for m in args.models.split(",")]
+        test_models = [m for m in test_models if m != SUITE_ANCHOR]
+        if not test_models:
+            print(f"Error: --models must include at least one model besides the anchor ({SUITE_ANCHOR}).")
+            sys.exit(1)
+        run_suite(test_models, args.verbose)
         return
 
     # ---- Benchmark mode (hybrid anchor) ----
@@ -579,7 +1229,8 @@ def main():
         if not test_models:
             print("Error: --models must include at least one model besides the anchor.")
             sys.exit(1)
-        run_benchmark(scenario_name, args.anchor, test_models, args.runs or 3, args.verbose)
+        run_benchmark(scenario_name, args.anchor, test_models, args.runs or 3, args.verbose,
+                      simultaneous=args.simultaneous, parallel=args.parallel)
         return
 
     if not args.eval:
@@ -622,9 +1273,11 @@ def main():
             print("Error: tournament mode requires exactly 2 models")
             print("  Example: --models haiku,opus")
             sys.exit(1)
-        run_tournament(model_names[0], model_names[1], args.runs, args.verbose)
+        run_tournament(model_names[0], model_names[1], args.runs, args.verbose,
+                       simultaneous=args.simultaneous, parallel=args.parallel)
     else:
-        run_eval(args.eval, args.models, args.runs, args.verbose)
+        run_eval(args.eval, args.models, args.runs, args.verbose,
+                 simultaneous=args.simultaneous, parallel=args.parallel)
 
 
 if __name__ == "__main__":

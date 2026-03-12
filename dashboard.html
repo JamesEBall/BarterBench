@@ -36,7 +36,7 @@ body {
 }
 
 .container {
-  max-width: 1000px;
+  max-width: 1240px;
   margin: 0 auto;
   padding: 2rem 2.5rem;
 }
@@ -75,6 +75,16 @@ body {
   overflow: hidden;
   border: 1px solid var(--border);
   margin-bottom: 1rem;
+}
+.market-row {
+  display: flex;
+  margin-bottom: 1rem;
+}
+.market-row .market-wrapper {
+  flex: 1;
+  margin-bottom: 0;
+  border-radius: 12px 0 0 12px;
+  border-right: none;
 }
 .market-wrapper canvas {
   display: block;
@@ -231,6 +241,25 @@ body {
   white-space: nowrap; color: var(--text2);
 }
 
+/* ---- Round separator (simultaneous mode) ---- */
+.round-sep {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0.5rem;
+  margin: 0.4rem 0 0.2rem;
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--text3);
+  font-family: var(--mono);
+}
+.round-sep::before, .round-sep::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
 /* ---- Event Log ---- */
 .event-log {
   max-height: 500px;
@@ -326,8 +355,444 @@ tr:hover td { background: var(--surface2); }
 .filter-btn.active { background: var(--accent); color: #ffffff; border-color: var(--accent); }
 svg text { font-family: var(--mono); }
 
+/* ---- Launcher Bar ---- */
+.launcher-bar {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0;
+  margin-bottom: 1rem;
+  overflow: hidden;
+}
+.launcher-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+}
+.launcher-tab {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.6rem 1.25rem;
+  border: none;
+  background: transparent;
+  color: var(--text3);
+  cursor: pointer;
+  position: relative;
+  transition: color 0.15s;
+}
+.launcher-tab:hover { color: var(--text2); }
+.launcher-tab.active {
+  color: var(--text);
+}
+.launcher-tab.active::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--accent);
+}
+.launcher-tab-content {
+  display: none;
+  padding: 0.75rem 1rem;
+}
+.launcher-tab-content.active { display: block; }
+.suite-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.suite-row input {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  padding: 0.35rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  flex: 1;
+  max-width: 320px;
+}
+.suite-info {
+  font-family: var(--mono);
+  font-size: 0.65rem;
+  color: var(--text3);
+  margin-top: 0.4rem;
+}
+.launcher-bar .launch-btn {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.35rem 1rem;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.launcher-bar .launch-btn:hover { opacity: 0.85; }
+.launcher-bar .launch-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.launcher-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 0.5rem 0.75rem;
+  margin-bottom: 0.75rem;
+}
+.launcher-field label {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-family: var(--mono);
+  font-size: 0.6rem;
+  color: var(--text3);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 0.2rem;
+}
+.launcher-field .tip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--border);
+  color: var(--text3);
+  font-size: 0.5rem;
+  font-weight: 700;
+  cursor: help;
+  position: relative;
+  text-transform: none;
+  letter-spacing: 0;
+  flex-shrink: 0;
+}
+.launcher-field .tip:hover { background: var(--text3); color: #fff; }
+.launcher-field .tip .tiptext {
+  display: none;
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--text);
+  color: #fff;
+  font-family: var(--sans);
+  font-size: 0.65rem;
+  font-weight: 400;
+  line-height: 1.4;
+  padding: 0.4rem 0.6rem;
+  border-radius: 6px;
+  width: max-content;
+  max-width: 220px;
+  white-space: normal;
+  text-transform: none;
+  letter-spacing: 0;
+  z-index: 100;
+  pointer-events: none;
+}
+.launcher-field .tip .tiptext::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top-color: var(--text);
+}
+.launcher-field .tip:hover .tiptext { display: block; }
+.launcher-field input,
+.launcher-field select {
+  width: 100%;
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg);
+  color: var(--text);
+}
+.launcher-field input[type="checkbox"] {
+  width: auto;
+  margin-right: 0.3rem;
+}
+.launcher-field .checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  color: var(--text2);
+  margin-top: 0.3rem;
+}
+
+/* ---- Experiment Blotter ---- */
+.exp-header {
+  font-family: var(--mono);
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text3);
+  padding: 10px 12px 8px;
+  border-bottom: 1px solid var(--border);
+}
+.experiment-list {
+  max-height: 240px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+.exp-item {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-light);
+  font-family: var(--mono);
+}
+.exp-item .exp-top {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 3px;
+}
+.exp-item .exp-scenario {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--text);
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.exp-item .exp-badge {
+  font-size: 0.5rem;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+.exp-badge-running { background: #dbeafe; color: #2563eb; }
+.exp-badge-queued { background: #f3f4f6; color: #6b7280; }
+.exp-badge-completed { background: #d1fae5; color: #059669; }
+.exp-badge-failed { background: #fee2e2; color: #dc2626; }
+.exp-badge-cancelled { background: #fef3c7; color: #d97706; }
+.exp-item .exp-models {
+  font-size: 0.58rem;
+  color: var(--text2);
+  margin-bottom: 3px;
+}
+.exp-progress {
+  height: 3px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-bottom: 3px;
+}
+.exp-progress-fill {
+  height: 100%;
+  background: var(--blue);
+  border-radius: 2px;
+  transition: width 0.3s;
+}
+.exp-controls {
+  display: flex;
+  gap: 4px;
+  margin-top: 3px;
+}
+.exp-ctrl-btn {
+  font-family: var(--mono);
+  font-size: 0.55rem;
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--surface2);
+  color: var(--text2);
+  cursor: pointer;
+}
+.exp-ctrl-btn:hover { border-color: var(--text3); color: var(--text); }
+.exp-ctrl-btn.cancel { color: var(--red); border-color: #fca5a5; }
+.exp-ctrl-btn.cancel:hover { background: #fee2e2; }
+
+/* ---- Parameter Summary Panel ---- */
+.param-panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  margin-bottom: 1rem;
+  overflow: hidden;
+  display: none;
+}
+.param-panel.visible { display: block; }
+.param-header {
+  display: flex;
+  align-items: center;
+  padding: 0.6rem 1rem;
+  cursor: pointer;
+  user-select: none;
+}
+.param-header:hover { background: var(--surface2); }
+.param-summary {
+  flex: 1;
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  color: var(--text);
+}
+.param-summary strong { font-weight: 700; }
+.param-summary .param-tag {
+  display: inline-block;
+  font-size: 0.6rem;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 3px;
+  margin-left: 4px;
+}
+.param-chevron {
+  font-size: 0.7rem;
+  color: var(--text3);
+  transition: transform 0.2s;
+  margin-left: 0.5rem;
+}
+.param-panel.expanded .param-chevron { transform: rotate(180deg); }
+.param-body {
+  display: none;
+  padding: 0 1rem 1rem;
+}
+.param-panel.expanded .param-body { display: block; }
+.param-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.75rem;
+}
+@media (max-width: 700px) { .param-grid { grid-template-columns: 1fr; } }
+.param-section {
+  background: var(--surface2);
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  padding: 0.6rem 0.75rem;
+}
+.param-section-title {
+  font-family: var(--mono);
+  font-size: 0.6rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text3);
+  margin-bottom: 0.4rem;
+}
+.param-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 0.15rem 0;
+  font-size: 0.7rem;
+}
+.param-key {
+  font-family: var(--mono);
+  font-size: 0.6rem;
+  color: var(--text3);
+}
+.param-val {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  color: var(--text);
+  font-weight: 500;
+}
+.param-model-tag {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 0.6rem;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 4px;
+  margin: 1px 2px;
+}
+
 /* ---- Goal chart ---- */
 .goal-chart-wrapper { position: relative; height: 220px; }
+
+/* ---- Run Selector ---- */
+.run-selector {
+  width: 220px;
+  min-width: 220px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 0 12px 12px 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.run-selector-header {
+  font-family: var(--mono);
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text3);
+  padding: 10px 12px 8px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.run-list {
+  flex: 1;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+.run-item {
+  padding: 8px 12px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border-light);
+  border-left: 3px solid transparent;
+  transition: background 0.15s;
+}
+.run-item:hover { background: var(--surface2); }
+.run-item.active { border-left-color: var(--blue); background: var(--surface2); }
+.run-item.live { background: #fef2f2; }
+.run-item .ri-top {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 2px;
+}
+.run-item .ri-live-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: #dc2626;
+  animation: pulse 2s infinite;
+  flex-shrink: 0;
+}
+.run-item .ri-badge {
+  font-family: var(--mono);
+  font-size: 0.5rem;
+  font-weight: 700;
+  padding: 1px 4px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+.run-item .ri-scenario {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.run-item .ri-models {
+  font-family: var(--mono);
+  font-size: 0.58rem;
+  color: var(--text2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.run-item .ri-meta {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--mono);
+  font-size: 0.52rem;
+  color: var(--text3);
+  margin-top: 2px;
+}
 </style>
 </head>
 <body>
@@ -339,7 +804,74 @@ svg text { font-family: var(--mono); }
 </div>
 <p class="subtitle">Competitive marketplace benchmark &mdash; real-time trading arena</p>
 
+<!-- ==================== MATCH LAUNCHER ==================== -->
+<div class="launcher-bar">
+  <div class="launcher-tabs">
+    <button class="launcher-tab active" onclick="switchLauncherTab('suite')">Eval Suite</button>
+    <button class="launcher-tab" onclick="switchLauncherTab('custom')">Custom</button>
+  </div>
+  <div class="launcher-tab-content active" id="tabSuite">
+    <div class="suite-row">
+      <input type="text" id="suiteModels" placeholder="sonnet" value="sonnet" oninput="updateSuiteInfo()">
+      <button class="launch-btn" id="suiteBtn" onclick="runSuite()">Run Eval</button>
+    </div>
+    <div class="suite-info" id="suiteInfo">Runs sonnet vs haiku anchor across 4 scenarios (12 runs total)</div>
+  </div>
+  <div class="launcher-tab-content" id="tabCustom">
+    <div class="launcher-form">
+      <div class="launcher-field">
+        <label>Scenario <span class="tip">?<span class="tiptext">The trading scenario to run. Each has different agents, items, and scarcity levels.</span></span></label>
+        <select id="advScenario"></select>
+      </div>
+      <div class="launcher-field">
+        <label>Agents <span class="tip">?<span class="tiptext">Total number of AI agents in this scenario. Set by the scenario — your model counts must add up to this number.</span></span></label>
+        <input type="number" id="advAgents" value="6" readonly style="background:var(--surface2);color:var(--text2)">
+      </div>
+      <div class="launcher-field">
+        <label>Rounds <span class="tip">?<span class="tiptext">Max trading rounds per match. Set by the scenario. Each round, every agent gets a turn to post, accept, or pass.</span></span></label>
+        <input type="number" id="advRounds" value="8" readonly style="background:var(--surface2);color:var(--text2)">
+      </div>
+      <div class="launcher-field">
+        <label>Scarcity <span class="tip">?<span class="tiptext">Scarce items in this scenario. Lower ratio = more competition. E.g. "gold (50%)" means only 50% of demanded gold exists.</span></span></label>
+        <input type="text" id="advScarcity" value="none" readonly style="background:var(--surface2);color:var(--text2)">
+      </div>
+      <div class="launcher-field">
+        <label>Models <span class="tip">?<span class="tiptext">Which AI models and how many of each. Format: model:count. E.g. "haiku:3,opus:3" means 3 haiku + 3 opus agents.</span></span></label>
+        <input type="text" id="advModels" placeholder="haiku:6 or haiku:3,opus:3">
+      </div>
+      <div class="launcher-field">
+        <label>Runs <span class="tip">?<span class="tiptext">How many matches to play. More runs give more reliable results. Each run is an independent game.</span></span></label>
+        <input type="number" id="advRuns" value="1" min="1" max="50">
+      </div>
+      <div class="launcher-field">
+        <label>Mode <span class="tip">?<span class="tiptext">Eval: head-to-head with ELO ratings. Benchmark: test models against a cheap anchor model. Arena: compare prompt strategies.</span></span></label>
+        <select id="advMode">
+          <option value="eval">Eval (pairwise)</option>
+          <option value="benchmark">Benchmark</option>
+          <option value="arena">Arena</option>
+        </select>
+      </div>
+      <div class="launcher-field">
+        <label>Parallel <span class="tip">?<span class="tiptext">Run multiple matches at the same time. Higher values use more API calls but finish faster.</span></span></label>
+        <input type="number" id="advParallel" value="1" min="1" max="8">
+      </div>
+      <div class="launcher-field">
+        <label>Options <span class="tip">?<span class="tiptext">Simultaneous: all agents act on the same market snapshot each round, instead of taking turns sequentially.</span></span></label>
+        <div class="checkbox-row">
+          <input type="checkbox" id="advSimultaneous"> Simultaneous
+        </div>
+      </div>
+      <div class="launcher-field" id="anchorField" style="display:none">
+        <label>Anchor <span class="tip">?<span class="tiptext">The baseline model in benchmark mode. Test models are compared against this. Typically a cheap/fast model like haiku.</span></span></label>
+        <input type="text" id="advAnchor" value="haiku" placeholder="haiku">
+      </div>
+    </div>
+    <button class="launch-btn" id="launchAdvBtn" onclick="launchAdvanced()">Launch</button>
+  </div>
+</div>
+
 <!-- ==================== MARKET CANVAS ==================== -->
+<div class="market-row">
 <div class="market-wrapper">
   <canvas id="marketCanvas"></canvas>
   <div class="market-status" id="marketStatus">waiting for match...</div>
@@ -351,14 +883,32 @@ svg text { font-family: var(--mono); }
   </div>
   <div class="market-legend" id="marketLegend"></div>
 </div>
+<div class="run-selector" id="runSelector">
+  <div class="exp-header">Experiments</div>
+  <div class="experiment-list" id="experimentList"></div>
+  <div class="run-selector-header">Runs</div>
+  <div class="run-list" id="runList"></div>
+</div>
+</div>
 
 <!-- ==================== CONTROLS ==================== -->
 <div class="controls" id="replayControls">
   <button class="ctrl-btn" onclick="restart()">restart</button>
   <button class="ctrl-btn" onclick="stepBack()">back</button>
   <button class="ctrl-btn" onclick="stepForward()">step</button>
-  <button class="ctrl-btn" onclick="playAll()">play</button>
+  <button class="ctrl-btn" id="playBtn" onclick="togglePlay()">play</button>
   <span class="step-display" id="stepDisplay">0 / 0</span>
+</div>
+
+<!-- ==================== PARAMETER SUMMARY ==================== -->
+<div class="param-panel" id="paramPanel">
+  <div class="param-header" onclick="toggleParamPanel()">
+    <div class="param-summary" id="paramSummary"></div>
+    <span class="param-chevron">&#9660;</span>
+  </div>
+  <div class="param-body">
+    <div class="param-grid" id="paramGrid"></div>
+  </div>
 </div>
 
 <!-- ==================== AGENT CARDS ==================== -->
@@ -502,6 +1052,7 @@ class MarketScene {
     this.running = false;
     this.time = 0;
     this.groundTiles = [];
+    this.fountainDrops = [];
     this.centreX = 0;
     this.centreY = 0;
     this.W = 0;
@@ -527,14 +1078,35 @@ class MarketScene {
   }
 
   _generateGround() {
-    // Cobblestone tiles
+    // Courtyard sandstone tiles with paths
     this.groundTiles = [];
-    const tileSize = 24;
+    this.fountainDrops = [];
+    const tileSize = 20;
+    const pathHalfW = 16;
     for (let y = 0; y < this.H + tileSize; y += tileSize) {
       for (let x = 0; x < this.W + tileSize; x += tileSize) {
-        const hue = 28 + Math.random() * 12;
-        const light = 38 + Math.random() * 12;
-        this.groundTiles.push({ x, y, size: tileSize, color: `hsl(${hue}, 30%, ${light}%)` });
+        const cx = x + tileSize / 2, cy = y + tileSize / 2;
+        const dx = Math.abs(cx - this.centreX);
+        const dy = Math.abs(cy - this.centreY);
+        const onPath = dx < pathHalfW || dy < pathHalfW;
+        const distFromCenter = Math.sqrt((cx - this.centreX) ** 2 + (cy - this.centreY) ** 2);
+        const onPlaza = distFromCenter < 45;
+
+        let hue, sat, light;
+        if (onPlaza) {
+          hue = 33 + Math.random() * 6;
+          sat = 14 + Math.random() * 4;
+          light = 58 + Math.random() * 7;
+        } else if (onPath) {
+          hue = 32 + Math.random() * 8;
+          sat = 16 + Math.random() * 6;
+          light = 52 + Math.random() * 8;
+        } else {
+          hue = 28 + Math.random() * 14;
+          sat = 18 + Math.random() * 10;
+          light = 40 + Math.random() * 10;
+        }
+        this.groundTiles.push({ x, y, size: tileSize, color: `hsl(${hue}, ${sat}%, ${light}%)`, onPath: onPath || onPlaza });
       }
     }
   }
@@ -630,9 +1202,7 @@ class MarketScene {
   _updateStatus(runData) {
     const el = document.getElementById('marketStatus');
     if (!el) return;
-    if (runData && runData._live) {
-      el.innerHTML = `<span class="live-dot"></span>LIVE &mdash; ${runData.scenario || 'match'}`;
-    } else if (runData) {
+    if (runData) {
       el.textContent = `replay &mdash; ${runData.scenario || 'match'} #${runData.run_id || ''}`;
     } else {
       el.textContent = 'waiting for match...';
@@ -825,65 +1395,186 @@ class MarketScene {
       p.life -= dt * 1.2;
     }
     this.particles = this.particles.filter(p => p.life > 0);
+
+    // Fountain water drops
+    if (Math.random() < dt * 6) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 12 + Math.random() * 18;
+      this.fountainDrops.push({
+        x: this.centreX,
+        y: this.centreY,
+        vx: Math.cos(angle) * speed,
+        vy: -25 - Math.random() * 20,
+        life: 1.0,
+        size: 0.8 + Math.random() * 1.2,
+      });
+    }
+    for (const d of this.fountainDrops) {
+      d.x += d.vx * dt;
+      d.y += d.vy * dt;
+      d.vy += 55 * dt;
+      d.life -= dt * 1.3;
+    }
+    this.fountainDrops = this.fountainDrops.filter(d => d.life > 0);
   }
 
   _draw() {
     const ctx = this.ctx;
     const W = this.W, H = this.H;
 
-    // Ground
+    // Courtyard ground tiles
     for (const t of this.groundTiles) {
       ctx.fillStyle = t.color;
       ctx.fillRect(t.x, t.y, t.size - 1, t.size - 1);
+      if (t.onPath) {
+        ctx.strokeStyle = 'rgba(0,0,0,0.06)';
+        ctx.lineWidth = 0.5;
+        ctx.strokeRect(t.x + 0.5, t.y + 0.5, t.size - 1.5, t.size - 1.5);
+      }
     }
 
-    // Darker inner area (market square)
-    const sqX = W * 0.1, sqY = H * 0.15, sqW = W * 0.8, sqH = H * 0.7;
-    ctx.fillStyle = 'rgba(0,0,0,0.08)';
-    ctx.beginPath();
-    ctx.roundRect(sqX, sqY, sqW, sqH, 8);
-    ctx.fill();
+    // Garden patches in the four quadrants
+    ctx.fillStyle = 'rgba(34, 120, 50, 0.10)';
+    const ph = 18, gm = 22;
+    ctx.fillRect(gm, gm, this.centreX - ph - gm, this.centreY - ph - gm);
+    ctx.fillRect(this.centreX + ph, gm, W - this.centreX - ph - gm, this.centreY - ph - gm);
+    ctx.fillRect(gm, this.centreY + ph, this.centreX - ph - gm, H - this.centreY - ph - gm);
+    ctx.fillRect(this.centreX + ph, this.centreY + ph, W - this.centreX - ph - gm, H - this.centreY - ph - gm);
 
-    // Market cross in centre
-    ctx.fillStyle = 'hsl(35, 25%, 55%)';
+    // Courtyard stone wall border
+    ctx.strokeStyle = 'hsl(25, 18%, 28%)';
+    ctx.lineWidth = 6;
     ctx.beginPath();
-    ctx.arc(this.centreX, this.centreY, 14, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = 'hsl(35, 20%, 70%)';
-    ctx.beginPath();
-    ctx.arc(this.centreX, this.centreY, 8, 0, Math.PI * 2);
-    ctx.fill();
-    // Cross lines
-    ctx.strokeStyle = 'hsl(35, 25%, 50%)';
+    ctx.roundRect(4, 4, W - 8, H - 8, 6);
+    ctx.stroke();
+    ctx.strokeStyle = 'hsl(30, 15%, 38%)';
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo(this.centreX - 10, this.centreY);
-    ctx.lineTo(this.centreX + 10, this.centreY);
-    ctx.moveTo(this.centreX, this.centreY - 10);
-    ctx.lineTo(this.centreX, this.centreY + 10);
+    ctx.roundRect(7, 7, W - 14, H - 14, 4);
     ctx.stroke();
+
+    // Torches at path/wall intersections
+    const torchPos = [
+      { x: this.centreX, y: 12 }, { x: this.centreX, y: H - 12 },
+      { x: 12, y: this.centreY }, { x: W - 12, y: this.centreY },
+    ];
+    for (const tp of torchPos) {
+      const grd = ctx.createRadialGradient(tp.x, tp.y, 0, tp.x, tp.y, 16);
+      grd.addColorStop(0, 'rgba(255,180,50,0.25)');
+      grd.addColorStop(1, 'rgba(255,180,50,0)');
+      ctx.fillStyle = grd;
+      ctx.beginPath();
+      ctx.arc(tp.x, tp.y, 16, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#f59e0b';
+      ctx.beginPath();
+      ctx.arc(tp.x, tp.y, 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Fountain — outer stone basin
+    const fx = this.centreX, fy = this.centreY;
+    ctx.fillStyle = 'rgba(0,0,0,0.12)';
+    ctx.beginPath();
+    ctx.ellipse(fx + 2, fy + 3, 30, 28, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = 'hsl(0, 0%, 42%)';
+    ctx.beginPath();
+    ctx.arc(fx, fy, 28, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = 'hsl(0, 0%, 52%)';
+    ctx.beginPath();
+    ctx.arc(fx, fy, 25, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = 'hsl(0, 0%, 35%)';
+    ctx.beginPath();
+    ctx.arc(fx, fy, 22, 0, Math.PI * 2);
+    ctx.fill();
+    // Animated water
+    const shimmer = Math.sin(this.time * 2) * 4;
+    ctx.fillStyle = `hsl(205, 55%, ${38 + shimmer}%)`;
+    ctx.beginPath();
+    ctx.arc(fx, fy, 20, 0, Math.PI * 2);
+    ctx.fill();
+    // Surface highlight
+    ctx.fillStyle = `hsla(200, 70%, 70%, ${0.2 + Math.sin(this.time * 3) * 0.1})`;
+    ctx.beginPath();
+    ctx.ellipse(fx - 5, fy - 4, 8, 5, -0.3, 0, Math.PI * 2);
+    ctx.fill();
+    // Ripple rings
+    for (let r = 0; r < 3; r++) {
+      const rippleR = 6 + ((this.time * 6 + r * 7) % 16);
+      const rippleA = Math.max(0, 0.25 - (rippleR - 6) / 16 * 0.2);
+      ctx.strokeStyle = `hsla(200, 60%, 65%, ${rippleA})`;
+      ctx.lineWidth = 0.5;
+      ctx.beginPath();
+      ctx.arc(fx, fy, rippleR, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    // Centre spout
+    ctx.fillStyle = 'hsl(0, 0%, 48%)';
+    ctx.beginPath();
+    ctx.arc(fx, fy, 5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = 'hsl(0, 0%, 58%)';
+    ctx.beginPath();
+    ctx.arc(fx, fy, 3, 0, Math.PI * 2);
+    ctx.fill();
+    // Fountain water drops
+    for (const d of this.fountainDrops) {
+      ctx.globalAlpha = d.life * 0.7;
+      ctx.fillStyle = 'hsl(200, 65%, 72%)';
+      ctx.beginPath();
+      ctx.arc(d.x, d.y, d.size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
 
     // Stalls
     for (const s of this.stalls) {
+      // Shadow
+      ctx.fillStyle = 'rgba(0,0,0,0.12)';
+      ctx.beginPath();
+      ctx.roundRect(s.x + 2, s.y + 2, s.w, s.h, 3);
+      ctx.fill();
       // Wooden base
-      ctx.fillStyle = 'hsl(30, 40%, 35%)';
-      ctx.fillRect(s.x, s.y, s.w, s.h);
-      ctx.strokeStyle = 'hsl(30, 30%, 25%)';
+      ctx.fillStyle = 'hsl(28, 38%, 33%)';
+      ctx.beginPath();
+      ctx.roundRect(s.x, s.y, s.w, s.h, 3);
+      ctx.fill();
+      // Wood highlight strip
+      ctx.fillStyle = 'hsl(30, 30%, 38%)';
+      ctx.fillRect(s.x + 2, s.y + 2, s.w - 4, 4);
+      // Border
+      ctx.strokeStyle = 'hsl(28, 25%, 22%)';
       ctx.lineWidth = 1;
-      ctx.strokeRect(s.x, s.y, s.w, s.h);
+      ctx.beginPath();
+      ctx.roundRect(s.x, s.y, s.w, s.h, 3);
+      ctx.stroke();
       // Awning
       ctx.fillStyle = s.color;
       ctx.beginPath();
-      ctx.moveTo(s.x - 5, s.y);
-      ctx.lineTo(s.x + s.w + 5, s.y);
-      ctx.lineTo(s.x + s.w, s.y - 12);
-      ctx.lineTo(s.x, s.y - 12);
+      ctx.moveTo(s.x - 6, s.y);
+      ctx.lineTo(s.x + s.w + 6, s.y);
+      ctx.lineTo(s.x + s.w + 2, s.y - 14);
+      ctx.lineTo(s.x - 2, s.y - 14);
       ctx.closePath();
       ctx.fill();
+      // Awning edge highlight
+      ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(s.x - 6, s.y);
+      ctx.lineTo(s.x + s.w + 6, s.y);
+      ctx.stroke();
+      // Posts
+      ctx.fillStyle = 'hsl(28, 30%, 28%)';
+      ctx.fillRect(s.x - 2, s.y - 14, 3, s.h + 14);
+      ctx.fillRect(s.x + s.w - 1, s.y - 14, 3, s.h + 14);
       // Item emoji
-      ctx.font = '16px serif';
+      ctx.font = '18px serif';
       ctx.textAlign = 'center';
-      ctx.fillText(ITEM_EMOJI[s.item] || '', s.x + s.w/2, s.y + s.h/2 + 5);
+      ctx.fillText(ITEM_EMOJI[s.item] || '', s.x + s.w/2, s.y + s.h/2 + 6);
     }
 
     // Agent shadows
@@ -1011,10 +1702,11 @@ function initScene() {
 // DATA LOADING
 // ============================================================
 async function loadData() {
-  let benchData = [], arenaData = [];
-  try { const r = await fetch('results.json'); benchData = (await r.json()).filter(d => !d.error); } catch {}
+  let pairwiseData = [], arenaData = [], benchmarkData = [];
+  try { const r = await fetch('results.json'); pairwiseData = (await r.json()).filter(d => !d.error); } catch {}
   try { const r = await fetch('arena/results.json'); arenaData = (await r.json()).filter(d => !d.error); } catch {}
-  allData = [...benchData, ...arenaData];
+  try { const r = await fetch('benchmark_results.json'); benchmarkData = (await r.json()).filter(d => !d.error); benchmarkData.forEach(d => d._benchmark = true); } catch {}
+  allData = [...pairwiseData, ...arenaData, ...benchmarkData];
 
   eloRatings = {};
   try { const r = await fetch('elo_ratings.json'); Object.assign(eloRatings, await r.json()); } catch {}
@@ -1028,10 +1720,16 @@ async function loadData() {
   renderLeaderboard();
   renderAnalytics();
 
-  // Auto-load most recent run if no run selected
-  if (!currentRun && allData.length) {
-    const runs = allData.filter(d => d.history && d.history.length);
-    if (runs.length) selectRun(runs.length - 1);
+  renderRunList();
+
+  // Auto-select newest run if: (a) nothing selected yet, or (b) an experiment is running and a new run appeared
+  const runs = allData.filter(d => d.history && d.history.length);
+  const hasRunningExp = experiments.some(e => e.status === 'running');
+  const prevCount = window._lastRunCount || 0;
+  window._lastRunCount = runs.length;
+
+  if (runs.length && (!currentRun || (hasRunningExp && runs.length > prevCount))) {
+    selectRun(runs.length - 1);
   }
 }
 
@@ -1060,9 +1758,66 @@ function selectRun(idx) {
   document.getElementById('rpAgent').textContent = '';
   updateStep();
   renderSummary(false);
+  renderParamPanel();
 
   // Load into scene
   if (scene) scene.loadRun(currentRun);
+  renderRunList();
+}
+
+// ============================================================
+// RUN LIST PANEL
+// ============================================================
+function renderRunList() {
+  const el = document.getElementById('runList');
+  if (!el) return;
+  let html = '';
+
+  // Completed runs sorted by timestamp descending
+  const runs = allData.filter(d => d.history && d.history.length);
+  const sorted = [...runs].sort((a, b) => {
+    const ta = a.timestamp || '';
+    const tb = b.timestamp || '';
+    return tb.localeCompare(ta);
+  });
+
+  sorted.forEach(d => {
+    const allIdx = allData.indexOf(d);
+    const isActive = currentRun &&
+      currentRun.run_id === d.run_id &&
+      currentRun.scenario === d.scenario;
+    const mgc = getGoalCompletion(d) || {};
+    const models = Object.keys(mgc);
+    const avgGoal = d.avg_goal_completion != null ? (d.avg_goal_completion * 100).toFixed(0) + '%' : '';
+    const isBM = d._benchmark;
+    const isSIM = d.history && d.history.some(h => h.simultaneous);
+    let badge = isBM ? '<span class="ri-badge" style="background:#7c3aed18;color:#7c3aed">BM</span>' : '';
+    if (isSIM) badge += '<span class="ri-badge" style="background:#0891b218;color:#0891b2">SIM</span>';
+    const ts = d.timestamp ? new Date(d.timestamp).toLocaleString(undefined, {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
+
+    html += `<div class="run-item${isActive ? ' active' : ''}" onclick="selectRunDirect(${allIdx})">
+      <div class="ri-top">
+        ${badge}
+        <span class="ri-scenario">${(d.scenario || 'run').replace(/_/g, ' ')}</span>
+      </div>
+      <div class="ri-models">${models.join(', ')}</div>
+      <div class="ri-meta"><span>${avgGoal}</span><span>${ts}</span></div>
+    </div>`;
+  });
+
+  if (!html) {
+    html = '<div style="padding:1.5rem;color:var(--text3);font-size:0.7rem;text-align:center">No runs yet</div>';
+  }
+
+  el.innerHTML = html;
+}
+
+function selectRunDirect(allDataIdx) {
+  const d = allData[allDataIdx];
+  if (!d || !d.history || !d.history.length) return;
+  const runs = allData.filter(r => r.history && r.history.length);
+  const idx = runs.indexOf(d);
+  if (idx >= 0) selectRun(idx);
 }
 
 function computeCompletion(inv, target) {
@@ -1195,8 +1950,19 @@ function renderGoalChart() {
 // ============================================================
 // EVENT LOG
 // ============================================================
+let _lastRenderedRound = -1;
 function renderEvent(h) {
   const log = document.getElementById('eventLog');
+
+  // Insert round separator for simultaneous mode
+  if (h.simultaneous && h.round !== _lastRenderedRound) {
+    const sep = document.createElement('div');
+    sep.className = 'round-sep';
+    sep.textContent = `Round ${h.round} (simultaneous)`;
+    log.appendChild(sep);
+    _lastRenderedRound = h.round;
+  }
+
   const model = currentRun.model_assignments[h.agent];
   const color = gc(model);
   let actionClass = 'ev-pass';
@@ -1252,6 +2018,8 @@ function renderEvent(h) {
 }
 
 function renderMarkdown(text) {
+  // Strip trailing code fences (LLM often ends reasoning with ```json)
+  text = text.replace(/```[\w]*\s*$/g, '').trimEnd();
   let html = text
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
@@ -1383,6 +2151,7 @@ function restart() {
   renderOrderBook();
   renderGoalChart();
   document.getElementById('eventLog').innerHTML = '';
+  _lastRenderedRound = -1;
   document.getElementById('rpText').innerHTML = '<span class="rp-empty">Click an event or step through the replay</span>';
   document.getElementById('rpAgent').textContent = '';
   updateStep();
@@ -1390,14 +2159,25 @@ function restart() {
   if (scene) scene.loadRun(currentRun);
 }
 
+function togglePlay() {
+  if (playing) {
+    playing = false;
+  } else {
+    playAll();
+  }
+}
+
 async function playAll() {
   if (!currentRun || playing) return;
   playing = true;
+  const btn = document.getElementById('playBtn');
+  if (btn) { btn.textContent = 'stop'; btn.style.background = 'var(--red)'; btn.style.color = '#fff'; btn.style.borderColor = 'var(--red)'; }
   while (currentStep < currentRun.history.length && playing) {
     stepForward();
     await new Promise(r => setTimeout(r, Math.max(100, 500 / playSpeed)));
   }
   playing = false;
+  if (btn) { btn.textContent = 'play'; btn.style.background = ''; btn.style.color = ''; btn.style.borderColor = ''; }
 }
 
 function setSpeed(s) {
@@ -1702,122 +2482,351 @@ function renderHistory() {
   }).join('')}</tbody>`;
 }
 
+// (Live match streaming removed — experiments blotter is the single source of truth)
+
 // ============================================================
-// LIVE MATCH STREAMING
+// MATCH LAUNCHER
 // ============================================================
-const LIVE_FILES = ['arena/live_gold_rush.json', 'arena/live_water_crisis.json', 'arena/live_spice_wars.json',
-  'arena/live_complex_market.json', 'arena/live_fruit_trade.json', 'arena/live_hidden_gem.json', 'arena/live_resource_scarcity.json'];
-let liveMatches = {};
-let activeLive = null;
-let liveStep = 0;
+let scenarioMeta = [];
 
-async function pollLive() {
-  let anyLive = false;
-  for (const f of LIVE_FILES) {
-    try {
-      const r = await fetch(f + '?t=' + Date.now());
-      const data = await r.json();
-      if (data.status === 'running' && data.history && data.history.length) {
-        liveMatches[data.scenario] = data;
-        anyLive = true;
-      }
-    } catch {}
-  }
-  updateLiveBadges();
-
-  // Auto-start watching if a live match appears and nothing is playing
-  if (anyLive && !currentRun) {
-    const scenario = Object.keys(liveMatches)[0];
-    if (scenario) watchLive(scenario);
-  }
-
-  // Auto-advance if watching a live match
-  if (currentRun && currentRun._live && activeLive && liveMatches[activeLive]) {
-    const data = liveMatches[activeLive];
-    const isNew = data.history.length < liveStep;
-    if (isNew) { liveStep = 0; watchLive(activeLive); }
-    else if (data.history.length > liveStep) {
-      currentRun.history = data.history;
-      currentRun.agent_results = data.agent_results;
-      currentRun.trades = data.trades;
-      const targets = currentRun.targets || [];
-      for (let i = liveStep; i < data.history.length; i++) {
-        const h = data.history[i];
-        applyAction(h);
-        updateAgents();
-        renderOrderBook();
-        renderEvent(h);
-        if (scene) scene.advanceEvent(h);
-        goalHistory.push({
-          step: goalHistory.length,
-          completions: inventories.map((inv, j) => computeCompletion(inv, targets[j] || {}))
-        });
-        renderGoalChart();
-      }
-      liveStep = data.history.length;
-      currentStep = liveStep;
-      updateStep();
+async function loadScenarios() {
+  try {
+    const r = await fetch('/api/scenarios');
+    scenarioMeta = await r.json();
+  } catch {
+    // Fallback if API not available
+    if (!scenarioMeta.length) {
+      scenarioMeta = [
+        {name:'gold_rush', num_agents:6, max_rounds:8, scarcity:'gold (50%)'},
+        {name:'water_crisis', num_agents:8, max_rounds:10, scarcity:'water (44%)'},
+        {name:'spice_wars', num_agents:10, max_rounds:12, scarcity:'gold (77%), gems (71%)'},
+        {name:'grand_bazaar', num_agents:12, max_rounds:12, scarcity:'silk (75%), diamonds (75%)'},
+      ];
     }
   }
+  const sel = document.getElementById('advScenario');
+  const current = sel.value;
+  sel.innerHTML = scenarioMeta.map(s =>
+    `<option value="${s.name}">${s.name} (${s.num_agents} agents, ${s.max_rounds} rounds)</option>`
+  ).join('');
+  if (current) sel.value = current;
+  updateScenarioInfo();
 }
 
-function updateLiveBadges() {
-  const controls = document.getElementById('replayControls');
-  controls.querySelectorAll('.live-btn').forEach(b => b.remove());
-  for (const [scenario, data] of Object.entries(liveMatches)) {
-    if (data.status === 'completed') continue;
-    const btn = document.createElement('button');
-    btn.className = 'ctrl-btn live-btn';
-    const isActive = activeLive === scenario && currentRun && currentRun._live;
-    btn.style.cssText = isActive
-      ? 'background:#dc2626;color:white;border-color:#dc2626;font-weight:700;animation:pulse 2s infinite'
-      : 'background:#fef2f2;color:#dc2626;border-color:#fca5a5;font-weight:600';
-    btn.textContent = `LIVE ${scenario} (${data.history.length})`;
-    btn.onclick = () => watchLive(scenario);
-    controls.appendChild(btn);
+function updateScenarioInfo() {
+  const name = document.getElementById('advScenario').value;
+  const s = scenarioMeta.find(m => m.name === name);
+  document.getElementById('advAgents').value = s ? s.num_agents : '?';
+  document.getElementById('advRounds').value = s ? s.max_rounds : '?';
+  document.getElementById('advScarcity').value = s ? (s.scarcity || 'none') : '?';
+}
+
+document.getElementById('advScenario').addEventListener('change', updateScenarioInfo);
+
+document.getElementById('advMode').addEventListener('change', function() {
+  document.getElementById('anchorField').style.display = this.value === 'benchmark' ? '' : 'none';
+});
+
+function switchLauncherTab(tab) {
+  document.querySelectorAll('.launcher-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.launcher-tab-content').forEach(t => t.classList.remove('active'));
+  if (tab === 'suite') {
+    document.querySelector('.launcher-tab:nth-child(1)').classList.add('active');
+    document.getElementById('tabSuite').classList.add('active');
+  } else {
+    document.querySelector('.launcher-tab:nth-child(2)').classList.add('active');
+    document.getElementById('tabCustom').classList.add('active');
   }
 }
 
-function watchLive(scenario) {
-  const data = liveMatches[scenario];
-  if (!data) return;
-  if (goalChartInstance) { goalChartInstance.destroy(); goalChartInstance = null; }
-  activeLive = scenario;
-  currentRun = Object.assign({}, data, {_live: true});
-  currentStep = 0;
-  liveStep = 0;
-  playing = false;
-  inventories = (currentRun.initial_inventories || []).map(inv => ({...inv}));
-  orderBookState = [];
-  const targets = currentRun.targets || [];
-  goalHistory = [{step:0, completions: inventories.map((inv,i) => computeCompletion(inv, targets[i]||{}))}];
-  renderAgents();
-  renderOrderBook();
-  renderGoalChart();
-  document.getElementById('eventLog').innerHTML = '';
-  document.getElementById('rpText').innerHTML = '<span class="rp-empty">Watching live...</span>';
-  document.getElementById('rpAgent').textContent = '';
+function updateSuiteInfo() {
+  const val = document.getElementById('suiteModels').value.trim();
+  const models = val.split(',').map(m => m.trim()).filter(m => m);
+  const n = models.length || 1;
+  const totalRuns = 4 * 3 * n;
+  const modelStr = models.join(', ') || 'model';
+  document.getElementById('suiteInfo').textContent =
+    `Runs ${modelStr} vs haiku anchor across 4 scenarios (${totalRuns} runs total)`;
+}
 
-  // Load scene
-  if (scene) scene.loadRun(currentRun);
-
-  for (let i = 0; i < data.history.length; i++) {
-    const h = data.history[i];
-    applyAction(h);
-    updateAgents();
-    renderOrderBook();
-    renderEvent(h);
-    if (scene) scene.advanceEvent(h);
-    goalHistory.push({
-      step: goalHistory.length,
-      completions: inventories.map((inv,j) => computeCompletion(inv, targets[j]||{}))
+async function runSuite() {
+  const models = document.getElementById('suiteModels').value.trim();
+  if (!models) return;
+  const btn = document.getElementById('suiteBtn');
+  btn.disabled = true;
+  btn.textContent = 'Launching...';
+  try {
+    const r = await fetch('/api/suite', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({models}),
     });
-    renderGoalChart();
+    const data = await r.json();
+    if (data.error) {
+      btn.textContent = 'Error: ' + data.error.substring(0, 30);
+      setTimeout(() => { btn.textContent = 'Run Eval'; btn.disabled = false; }, 3000);
+    } else if (data.status === 'running') {
+      btn.textContent = 'Running!';
+      setTimeout(() => { btn.textContent = 'Run Eval'; btn.disabled = false; }, 1500);
+      pollExperiments();
+    } else {
+      btn.textContent = 'Failed';
+      setTimeout(() => { btn.textContent = 'Run Eval'; btn.disabled = false; }, 2000);
+    }
+  } catch (e) {
+    btn.textContent = 'Error: ' + e.message.substring(0, 30);
+    setTimeout(() => { btn.textContent = 'Run Eval'; btn.disabled = false; }, 3000);
   }
-  liveStep = data.history.length;
-  currentStep = liveStep;
-  updateStep();
-  updateLiveBadges();
+}
+
+function launchAdvanced() {
+  doLaunch({
+    mode: document.getElementById('advMode').value,
+    scenario: document.getElementById('advScenario').value,
+    models: document.getElementById('advModels').value || 'haiku:6',
+    runs: parseInt(document.getElementById('advRuns').value) || 1,
+    simultaneous: document.getElementById('advSimultaneous').checked,
+    parallel: parseInt(document.getElementById('advParallel').value) || 1,
+    anchor: document.getElementById('advMode').value === 'benchmark'
+      ? (document.getElementById('advAnchor').value || 'haiku')
+      : null,
+  }, document.getElementById('launchAdvBtn'));
+}
+
+async function doLaunch(config, btn) {
+  btn.disabled = true;
+  btn.textContent = 'Launching...';
+  try {
+    const r = await fetch('/api/launch', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({config}),
+    });
+    const data = await r.json();
+    if (data.error) {
+      btn.textContent = 'Error: ' + data.error.substring(0, 30);
+      setTimeout(() => { btn.textContent = 'Launch'; btn.disabled = false; }, 3000);
+    } else if (data.status === 'running') {
+      btn.textContent = 'Launched!';
+      setTimeout(() => { btn.textContent = 'Launch'; btn.disabled = false; }, 1500);
+      pollExperiments();
+    } else {
+      btn.textContent = 'Failed';
+      setTimeout(() => { btn.textContent = 'Launch'; btn.disabled = false; }, 2000);
+    }
+  } catch (e) {
+    btn.textContent = 'Error: ' + e.message.substring(0, 30);
+    setTimeout(() => { btn.textContent = 'Launch'; btn.disabled = false; }, 3000);
+  }
+}
+
+// ============================================================
+// EXPERIMENT BLOTTER
+// ============================================================
+let experiments = [];
+
+async function pollExperiments() {
+  try {
+    const r = await fetch('/api/experiments');
+    if (r.ok) {
+      experiments = await r.json();
+      renderExperiments();
+    }
+  } catch {}
+}
+
+function renderExperiments() {
+  const el = document.getElementById('experimentList');
+  if (!el) return;
+  const now = Date.now();
+  const oneHour = 60 * 60 * 1000;
+
+  // Show queued/running always; completed/failed/cancelled for 1 hour unless dismissed
+  const visible = experiments.filter(exp => {
+    if (dismissedExperiments.has(exp.id)) return false;
+    if (exp.status === 'queued' || exp.status === 'running') return true;
+    const completed = exp.completed_at ? new Date(exp.completed_at).getTime() : 0;
+    return (now - completed) < oneHour;
+  });
+
+  if (!visible.length) {
+    el.innerHTML = '<div style="padding:0.75rem 12px;color:var(--text3);font-size:0.6rem;text-align:center">No experiments</div>';
+    return;
+  }
+
+  // Most recent first
+  visible.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+
+  el.innerHTML = visible.map(exp => {
+    const cfg = exp.config || {};
+    const badgeClass = 'exp-badge-' + exp.status;
+    const progress = exp.progress || {};
+    const pct = progress.total_runs ? (progress.current_run / progress.total_runs * 100) : 0;
+    const isSIM = cfg.simultaneous;
+    const isBM = cfg.mode === 'benchmark';
+
+    let badges = `<span class="exp-badge ${badgeClass}">${exp.status.toUpperCase()}</span>`;
+    if (isBM) badges += '<span class="exp-badge" style="background:#7c3aed18;color:#7c3aed">BM</span>';
+    if (isSIM) badges += '<span class="exp-badge" style="background:#0891b218;color:#0891b2">SIM</span>';
+
+    let progressBar = '';
+    if (exp.status === 'running') {
+      progressBar = `<div class="exp-progress"><div class="exp-progress-fill" style="width:${pct}%"></div></div>`;
+    }
+
+    let controls = '';
+    if (exp.status === 'running' || exp.status === 'queued') {
+      controls += `<button class="exp-ctrl-btn cancel" onclick="cancelExperiment('${exp.id}')">&#10005; Cancel</button>`;
+    }
+    if (exp.status === 'queued') {
+      controls += `<button class="exp-ctrl-btn" onclick="editExperiment('${exp.id}')">Edit</button>`;
+    }
+    if (exp.status === 'completed' || exp.status === 'failed' || exp.status === 'cancelled') {
+      controls += `<button class="exp-ctrl-btn" onclick="dismissExperiment('${exp.id}')">&#10005; Dismiss</button>`;
+    }
+
+    return `<div class="exp-item">
+      <div class="exp-top">
+        ${badges}
+        <span class="exp-scenario">${(cfg.scenario || '').replace(/_/g, ' ')}</span>
+      </div>
+      <div class="exp-models">${cfg.models || ''} &times;${cfg.runs || 1}</div>
+      ${progressBar}
+      ${controls ? `<div class="exp-controls">${controls}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+async function cancelExperiment(id) {
+  try {
+    await fetch('/api/cancel', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({id}),
+    });
+    pollExperiments();
+  } catch {}
+}
+
+let dismissedExperiments = new Set(JSON.parse(localStorage.getItem('dismissedExps') || '[]'));
+
+function dismissExperiment(id) {
+  dismissedExperiments.add(id);
+  localStorage.setItem('dismissedExps', JSON.stringify([...dismissedExperiments]));
+  renderExperiments();
+}
+
+function editExperiment(id) {
+  const exp = experiments.find(e => e.id === id);
+  if (!exp) return;
+  const cfg = exp.config || {};
+
+  // Pre-fill advanced form
+  document.getElementById('advScenario').value = cfg.scenario || 'gold_rush';
+  document.getElementById('advModels').value = cfg.models || '';
+  document.getElementById('advRuns').value = cfg.runs || 1;
+  document.getElementById('advMode').value = cfg.mode || 'eval';
+  document.getElementById('advParallel').value = cfg.parallel || 1;
+  document.getElementById('advSimultaneous').checked = !!cfg.simultaneous;
+  if (cfg.anchor) document.getElementById('advAnchor').value = cfg.anchor;
+  document.getElementById('anchorField').style.display = cfg.mode === 'benchmark' ? '' : 'none';
+  document.getElementById('launcherAdvanced').classList.add('open');
+
+  // Cancel the queued experiment
+  cancelExperiment(id);
+}
+
+// ============================================================
+// PARAMETER SUMMARY PANEL
+// ============================================================
+function toggleParamPanel() {
+  document.getElementById('paramPanel').classList.toggle('expanded');
+}
+
+function renderParamPanel() {
+  const panel = document.getElementById('paramPanel');
+  const summaryEl = document.getElementById('paramSummary');
+  const gridEl = document.getElementById('paramGrid');
+
+  if (!currentRun) {
+    panel.classList.remove('visible');
+    return;
+  }
+
+  panel.classList.add('visible');
+  panel.classList.remove('expanded');
+
+  const r = currentRun;
+  const scenario = r.scenario || 'unknown';
+  const mgc = getGoalCompletion(r) || {};
+  const models = Object.keys(mgc);
+  const isSIM = r.history && r.history.some(h => h.simultaneous);
+  const isBM = r._benchmark || (r.mode === 'benchmark');
+  const config = r.model_config || '';
+
+  // Summary line
+  let tags = '';
+  if (isSIM) tags += '<span class="param-tag" style="background:#0891b218;color:#0891b2">SIM</span>';
+  if (isBM) tags += '<span class="param-tag" style="background:#7c3aed18;color:#7c3aed">BM</span>';
+  summaryEl.innerHTML = `<strong>${scenario.replace(/_/g, ' ')}</strong> &mdash; ${config || models.join(', ')}${tags}`;
+
+  // Build expanded sections
+  const scenarioData = r.scenario_data || {};
+  const numAgents = r.model_assignments ? r.model_assignments.length : 0;
+  const maxRounds = scenarioData.max_rounds || r.history ? Math.max(...(r.history || []).map(h => h.round || 0), 0) : '?';
+
+  // Model counts
+  const modelCounts = {};
+  (r.model_assignments || []).forEach(m => { modelCounts[m] = (modelCounts[m] || 0) + 1; });
+  const modelTags = Object.entries(modelCounts).map(([m, c]) =>
+    `<span class="param-model-tag" style="background:${gc(m)}18;color:${gc(m)}">${m} &times;${c}</span>`
+  ).join(' ');
+
+  // Results
+  const resultRows = models.map(m =>
+    `<div class="param-row"><span class="param-key">${m}</span><span class="param-val">${(mgc[m]*100).toFixed(1)}%</span></div>`
+  ).join('');
+
+  // Tokens
+  const tokens = (r.agent_tokens || []);
+  const totalTokens = tokens.reduce((sum, t) => sum + (t.tokens || 0), 0);
+
+  gridEl.innerHTML = `
+    <div class="param-section">
+      <div class="param-section-title">Scenario</div>
+      <div class="param-row"><span class="param-key">Name</span><span class="param-val">${scenario}</span></div>
+      <div class="param-row"><span class="param-key">Agents</span><span class="param-val">${numAgents}</span></div>
+      <div class="param-row"><span class="param-key">Rounds</span><span class="param-val">${maxRounds}</span></div>
+    </div>
+    <div class="param-section">
+      <div class="param-section-title">Models</div>
+      <div style="margin-bottom:0.3rem">${modelTags}</div>
+      <div class="param-row"><span class="param-key">Config</span><span class="param-val">${config || 'N/A'}</span></div>
+    </div>
+    <div class="param-section">
+      <div class="param-section-title">Mode</div>
+      <div class="param-row"><span class="param-key">Turn Order</span><span class="param-val">${isSIM ? 'Simultaneous' : 'Sequential'}</span></div>
+      <div class="param-row"><span class="param-key">Type</span><span class="param-val">${isBM ? 'Benchmark' : 'Pairwise'}</span></div>
+      ${r.anchor_model ? `<div class="param-row"><span class="param-key">Anchor</span><span class="param-val">${r.anchor_model}</span></div>` : ''}
+    </div>
+    <div class="param-section">
+      <div class="param-section-title">Run Metadata</div>
+      <div class="param-row"><span class="param-key">Run ID</span><span class="param-val">#${r.run_id || '?'}</span></div>
+      <div class="param-row"><span class="param-key">Timestamp</span><span class="param-val">${r.timestamp ? new Date(r.timestamp).toLocaleString(undefined, {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '?'}</span></div>
+      <div class="param-row"><span class="param-key">Duration</span><span class="param-val">${r.elapsed_seconds ? r.elapsed_seconds.toFixed(1) + 's' : '?'}</span></div>
+    </div>
+    <div class="param-section">
+      <div class="param-section-title">Results</div>
+      ${resultRows}
+      <div class="param-row"><span class="param-key">Avg Goal</span><span class="param-val">${r.avg_goal_completion != null ? (r.avg_goal_completion*100).toFixed(1)+'%' : '?'}</span></div>
+      <div class="param-row"><span class="param-key">Trades</span><span class="param-val">${r.num_trades != null ? r.num_trades : '?'}</span></div>
+      <div class="param-row"><span class="param-key">Invalid Rate</span><span class="param-val">${r.invalid_rate != null ? (r.invalid_rate*100).toFixed(1)+'%' : '?'}</span></div>
+    </div>
+    <div class="param-section">
+      <div class="param-section-title">Tokens</div>
+      <div class="param-row"><span class="param-key">Total</span><span class="param-val">${totalTokens ? totalTokens.toLocaleString() : 'N/A'}</span></div>
+      ${tokens.map(t => `<div class="param-row"><span class="param-key">${t.model}</span><span class="param-val">${t.tokens ? t.tokens.toLocaleString() : '0'}</span></div>`).join('')}
+    </div>`;
 }
 
 // ============================================================
@@ -1825,9 +2834,10 @@ function watchLive(scenario) {
 // ============================================================
 initScene();
 loadData();
+loadScenarios();
 setInterval(loadData, 5000);
-setInterval(pollLive, 3000);
-pollLive();
+setInterval(pollExperiments, 3000);
+pollExperiments();
 </script>
 </body>
 </html>
