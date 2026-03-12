@@ -1,8 +1,8 @@
 """CLI entry point: run marketplace eval across scenarios."""
 
 import argparse
-import fcntl
 import json
+import math
 import os
 import random
 import signal
@@ -11,14 +11,14 @@ import sys
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import contextmanager
 from datetime import datetime, timezone
 from http.server import SimpleHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
 from agent import MarketAgent
 from engine import MarketEngine
-from elo import record_match, print_elo_leaderboard, reset_ratings, load_ratings
+from elo import record_match, print_elo_leaderboard, reset_ratings, load_ratings, file_lock
+from bradley_terry import compute_bt_ratings, print_bt_leaderboard, reset_bt
 from scoring import compute_metrics
 
 SCENARIOS_DIR = Path(__file__).parent / "scenarios"
@@ -30,23 +30,9 @@ EXPERIMENTS_FILE = Path(__file__).parent / "experiments.json"
 
 # ---- File locking for parallel runs ----
 
-@contextmanager
-def _file_lock(path):
-    """Acquire an exclusive file lock for atomic read-modify-write."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    lock_path = Path(str(path) + ".lock")
-    lock_fd = open(lock_path, "w")
-    try:
-        fcntl.flock(lock_fd, fcntl.LOCK_EX)
-        yield
-    finally:
-        fcntl.flock(lock_fd, fcntl.LOCK_UN)
-        lock_fd.close()
-
-
 def _locked_append_result(entry, results_file):
     """Thread-safe append of a result entry to a JSON array file."""
-    with _file_lock(results_file):
+    with file_lock(results_file):
         if results_file.exists():
             with open(results_file) as f:
                 results = json.load(f)
@@ -105,7 +91,12 @@ def auto_model_config(scenario):
 
 
 def assign_models(model_config, num_agents):
-    """Assign models to agent slots randomly."""
+    """Assign models to agent slots with stratified pairing.
+
+    For 2-model matchups, paired role slots (0&1, 2&3, etc.) get one of each model
+    so neither model monopolises structurally advantaged positions.
+    Falls back to random shuffle for >2 models or odd slot counts.
+    """
     assignments = []
     for model, count in model_config:
         assignments.extend([model] * count)
@@ -115,8 +106,19 @@ def assign_models(model_config, num_agents):
         print(f"Error: model config specifies {total} agents but scenario has {num_agents}")
         sys.exit(1)
 
-    random.shuffle(assignments)
-    return assignments
+    models = list(set(assignments))
+    if len(models) == 2 and num_agents % 2 == 0:
+        # Stratified: assign one of each model to each role pair
+        result = [None] * num_agents
+        for pair_start in range(0, num_agents, 2):
+            pair = list(models)
+            random.shuffle(pair)
+            result[pair_start] = pair[0]
+            result[pair_start + 1] = pair[1]
+        return result
+    else:
+        random.shuffle(assignments)
+        return assignments
 
 
 # ---- Results persistence ----
@@ -160,34 +162,40 @@ def print_leaderboard(results):
 
     elo_ratings = load_ratings()
 
-    print("\n" + "=" * 75)
+    print("\n" + "=" * 85)
     print("  LEADERBOARD")
-    print("=" * 75)
-    if elo_ratings:
-        print(f"  {'Model':<12} {'ELO':>8} {'Avg Goal%':>10} {'Avg Trades':>11} {'Invalid%':>9} {'Runs':>6}")
-    else:
-        print(f"  {'Model':<12} {'Avg Goal%':>10} {'Avg Trades':>11} {'Invalid%':>9} {'Runs':>6}")
-    print("-" * 75)
+    print("=" * 85)
+    print(f"  {'Model':<12} {'Avg Goal%':>10} {'± 95% CI':>9} {'StdDev':>8} {'Invalid%':>9} {'Runs':>6}")
+    print("-" * 85)
 
     rows = []
     for model, stats in model_stats.items():
         n = len(stats["scores"])
+        scores = stats["scores"]
+        mean = sum(scores) / n * 100
+        if n > 1:
+            variance = sum((s * 100 - mean) ** 2 for s in scores) / (n - 1)
+            std = math.sqrt(variance)
+            ci95 = 1.96 * std / math.sqrt(n)
+        else:
+            std = 0.0
+            ci95 = 0.0
         rows.append((
             model,
             elo_ratings.get(model, 0),
-            sum(stats["scores"]) / n * 100,
-            sum(stats["trades"]) / n,
+            mean,
+            std,
+            ci95,
             sum(stats["invalids"]) / n * 100,
             n,
         ))
     rows.sort(key=lambda r: (r[1] if r[1] else 0, r[2]), reverse=True)
 
-    for model, elo, score, trades, invalids, n in rows:
-        if elo_ratings:
-            print(f"  {model:<12} {elo:>8.1f} {score:>9.1f}% {trades:>11.1f} {invalids:>8.1f}% {n:>6}")
-        else:
-            print(f"  {model:<12} {score:>9.1f}% {trades:>11.1f} {invalids:>8.1f}% {n:>6}")
-    print("=" * 75)
+    for model, elo, score, std, ci95, invalids, n in rows:
+        elo_str = f" ELO {elo:.0f}" if elo else ""
+        ci_str = f"±{ci95:.1f}%" if n > 1 else "  n/a"
+        print(f"  {model:<12} {score:>9.1f}% {ci_str:>9} {std:>7.1f}% {invalids:>8.1f}% {n:>6}{elo_str}")
+    print("=" * 85)
 
 
 # ---- Benchmark mode ----
@@ -248,16 +256,24 @@ def print_benchmark_leaderboard(run_entries, anchor):
             for model, qty in captures.items():
                 scarce_totals[item][model] = scarce_totals[item].get(model, 0) + qty
 
-    print("\n" + "=" * 80)
+    print("\n" + "=" * 90)
     print("  BENCHMARK LEADERBOARD")
-    print("=" * 80)
-    print(f"  {'Model':<14} {'Avg Goal%':>10} {'vs Anchor':>12} {'W-L-D':>10}")
-    print("-" * 80)
+    print("=" * 90)
+    print(f"  {'Model':<14} {'Avg Goal%':>10} {'± 95% CI':>9} {'StdDev':>8} {'vs Anchor':>12} {'W-L-D':>10}")
+    print("-" * 90)
 
     rows = []
     for model, stats in model_stats.items():
         n = len(stats["scores"])
-        avg = sum(stats["scores"]) / n * 100
+        scores = stats["scores"]
+        avg = sum(scores) / n * 100
+        if n > 1:
+            variance = sum((s * 100 - avg) ** 2 for s in scores) / (n - 1)
+            std = math.sqrt(variance)
+            ci95 = 1.96 * std / math.sqrt(n)
+        else:
+            std = 0.0
+            ci95 = 0.0
         wins = stats["vs_anchor"].count("win")
         losses = stats["vs_anchor"].count("loss")
         draws = stats["vs_anchor"].count("draw")
@@ -268,13 +284,14 @@ def print_benchmark_leaderboard(run_entries, anchor):
             total = wins + losses + draws
             vs_str = f"{wins / total * 100:.0f}% wins" if total > 0 else "-"
             wld = f"{wins}-{losses}-{draws}"
-        rows.append((model, avg, vs_str, wld, model == anchor))
+        rows.append((model, avg, std, ci95, vs_str, wld, model == anchor, n))
 
     rows.sort(key=lambda r: r[1], reverse=True)
 
-    for model, avg, vs_str, wld, is_anchor in rows:
+    for model, avg, std, ci95, vs_str, wld, is_anchor, n in rows:
         marker = " *" if is_anchor else "  "
-        print(f"{marker}{model:<12} {avg:>9.1f}% {vs_str:>12} {wld:>10}")
+        ci_str = f"±{ci95:.1f}%" if n > 1 else "  n/a"
+        print(f"{marker}{model:<12} {avg:>9.1f}% {ci_str:>9} {std:>7.1f}% {vs_str:>12} {wld:>10}")
 
     if scarce_totals:
         print()
@@ -292,7 +309,7 @@ def print_benchmark_leaderboard(run_entries, anchor):
 
 
 def run_benchmark(scenario_name, anchor, test_models, runs, verbose,
-                  simultaneous=False, parallel=1):
+                  simultaneous=False, parallel=1, temperature=1.0):
     """Run benchmark mode: test models against anchor in a single scenario."""
     scenario = load_scenario(scenario_name)
     num_agents = len(scenario["agents"])
@@ -325,7 +342,7 @@ def run_benchmark(scenario_name, anchor, test_models, runs, verbose,
         run_id = run_offset + run_num + 1
         print(f"  Run {run_num + 1}/{runs}")
         entry = run_single(scenario_name, scenario, config, config_str, run_id, verbose,
-                           simultaneous=simultaneous, live_updates=(parallel <= 1))
+                           simultaneous=simultaneous, live_updates=True, temperature=temperature)
         entry["mode"] = "benchmark"
         entry["anchor_model"] = anchor
         _locked_append_result(entry, BENCHMARK_RESULTS_FILE)
@@ -348,12 +365,15 @@ def run_benchmark(scenario_name, anchor, test_models, runs, verbose,
 # ---- Run a single match (model vs model) ----
 
 def run_single(scenario_name, scenario, model_config, model_config_str, run_id, verbose,
-               simultaneous=False, live_updates=True):
+               simultaneous=False, live_updates=True, temperature=1.0):
     """Run a single marketplace match. Returns the result entry."""
+    # Seed RNG for reproducibility — each run gets a unique but deterministic seed
+    seed = hash((scenario_name, run_id)) % (2**32)
+    random.seed(seed)
     num_agents = len(scenario["agents"])
     model_assignments = assign_models(model_config, num_agents)
     agents = [
-        MarketAgent(model_name=model_assignments[i], agent_idx=i)
+        MarketAgent(model_name=model_assignments[i], agent_idx=i, temperature=temperature)
         for i in range(num_agents)
     ]
 
@@ -372,12 +392,15 @@ def run_single(scenario_name, scenario, model_config, model_config_str, run_id, 
 
         entry = {
             "run_id": run_id,
+            "seed": seed,
+            "temperature": temperature,
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "scenario": scenario_name,
             "model_config": model_config_str,
             "model_assignments": model_assignments,
             **metrics,
             "elapsed_seconds": result["elapsed_seconds"],
+            "backend": agents[0].backend,
             "agent_tokens": [
                 {"model": agents[i].model_name,
                  "tokens": agents[i].total_input_tokens + agents[i].total_output_tokens}
@@ -438,7 +461,7 @@ def run_single(scenario_name, scenario, model_config, model_config_str, run_id, 
 # ---- Orchestration modes ----
 
 def run_eval(scenario_name, model_config_str, runs, verbose,
-             simultaneous=False, parallel=1):
+             simultaneous=False, parallel=1, temperature=1.0):
     """Run eval for a single scenario."""
     scenario = load_scenario(scenario_name)
     num_agents = len(scenario["agents"])
@@ -466,7 +489,7 @@ def run_eval(scenario_name, model_config_str, runs, verbose,
     def _run_one(run_num):
         run_id = run_offset + run_num + 1
         entry = run_single(scenario_name, scenario, model_config, model_config_str, run_id, verbose,
-                           simultaneous=simultaneous, live_updates=(parallel <= 1))
+                           simultaneous=simultaneous, live_updates=True, temperature=temperature)
         _locked_append_result(entry, RESULTS_FILE)
         save_run_file(entry, scenario_name)
         return entry
@@ -484,11 +507,13 @@ def run_eval(scenario_name, model_config_str, runs, verbose,
     results = load_existing_results()
     print_leaderboard(results)
     print_elo_leaderboard()
+    compute_bt_ratings()
+    print_bt_leaderboard()
     print(f"\nResults saved to {RESULTS_FILE}")
 
 
 def run_tournament(model_a, model_b, runs_per_scenario, verbose,
-                   simultaneous=False, parallel=1):
+                   simultaneous=False, parallel=1, temperature=1.0):
     """Run a full tournament: model_a vs model_b across all scenarios."""
     scenarios = list_scenarios()
     if not scenarios:
@@ -521,13 +546,17 @@ def run_tournament(model_a, model_b, runs_per_scenario, verbose,
 
         print(f"--- {scenario_name} ({num_agents} agents, {scenario.get('max_rounds', 10)} rounds) ---")
 
+        _match_lock = threading.Lock()
+
         def _run_one(run_num):
             nonlocal match_num
-            match_num += 1
-            run_id = run_offset + match_num
-            print(f"\n  Match {match_num}/{total_matches}")
+            with _match_lock:
+                match_num += 1
+                current_match = match_num
+            run_id = run_offset + current_match
+            print(f"\n  Match {current_match}/{total_matches}")
             entry = run_single(scenario_name, scenario, model_config, model_config_str, run_id, verbose,
-                               simultaneous=simultaneous, live_updates=(parallel <= 1))
+                               simultaneous=simultaneous, live_updates=True, temperature=temperature)
             _locked_append_result(entry, RESULTS_FILE)
             save_run_file(entry, scenario_name)
             return entry
@@ -545,6 +574,8 @@ def run_tournament(model_a, model_b, runs_per_scenario, verbose,
     results = load_existing_results()
     print_leaderboard(results)
     print_elo_leaderboard()
+    compute_bt_ratings()
+    print_bt_leaderboard()
     print(f"\nResults saved to {RESULTS_FILE}")
 
 
@@ -552,7 +583,7 @@ def run_tournament(model_a, model_b, runs_per_scenario, verbose,
 
 def _load_experiments():
     """Load experiments list from experiments.json."""
-    with _file_lock(EXPERIMENTS_FILE):
+    with file_lock(EXPERIMENTS_FILE):
         if EXPERIMENTS_FILE.exists():
             with open(EXPERIMENTS_FILE) as f:
                 return json.load(f)
@@ -561,14 +592,14 @@ def _load_experiments():
 
 def _save_experiments(experiments):
     """Save experiments list to experiments.json."""
-    with _file_lock(EXPERIMENTS_FILE):
+    with file_lock(EXPERIMENTS_FILE):
         with open(EXPERIMENTS_FILE, "w") as f:
             json.dump(experiments, f, indent=2)
 
 
 def _update_experiment(exp_id, updates):
     """Update a single experiment by ID."""
-    with _file_lock(EXPERIMENTS_FILE):
+    with file_lock(EXPERIMENTS_FILE):
         if EXPERIMENTS_FILE.exists():
             with open(EXPERIMENTS_FILE) as f:
                 experiments = json.load(f)
@@ -649,18 +680,20 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
     def _handle_get_experiments(self):
         experiments = _load_experiments()
-        # Refresh stale running statuses
+        # Refresh stale running statuses (only write back if something changed)
+        dirty = False
         for exp in experiments:
             if exp["status"] == "running":
                 pid = exp.get("pid")
                 if pid and exp["id"] not in _active_processes:
-                    # Process was tracked but server restarted — check if PID still exists
                     try:
                         os.kill(pid, 0)
                     except OSError:
                         exp["status"] = "completed"
                         exp["completed_at"] = datetime.now(timezone.utc).isoformat()
-        _save_experiments(experiments)
+                        dirty = True
+        if dirty:
+            _save_experiments(experiments)
         self._send_json(experiments)
 
     def _handle_get_scenarios(self):
@@ -685,6 +718,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
         simultaneous = config.get("simultaneous", False)
         parallel = config.get("parallel", 1)
         anchor = config.get("anchor")
+        temperature = config.get("temperature", 1.0)
 
         # Calculate total runs (scenario "all" multiplies by number of eval scenarios)
         if scenario == "all":
@@ -737,6 +771,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             cmd += ["--simultaneous"]
         if parallel > 1:
             cmd += ["--parallel", str(parallel)]
+        if temperature != 1.0:
+            cmd += ["--temperature", str(temperature)]
 
         # Spawn subprocess
         print(f"[server] Launching experiment {exp_id}: {' '.join(cmd)}")
@@ -988,7 +1024,7 @@ def _monitor_experiment(exp_id, proc, scenario, total_runs):
 # ---- Eval Suite mode ----
 
 SUITE_SCENARIOS = ["gold_rush", "water_crisis", "spice_wars", "grand_bazaar"]
-SUITE_RUNS_PER_SCENARIO = 3
+SUITE_RUNS_PER_SCENARIO = 10
 SUITE_ANCHOR = "haiku"
 
 
@@ -1095,6 +1131,8 @@ def run_suite(test_models, verbose):
     print(f"\n{'='*80}")
     print(f"\nResults saved to {RESULTS_FILE}")
     print_elo_leaderboard()
+    compute_bt_ratings()
+    print_bt_leaderboard()
 
 
 def serve_dashboard():
@@ -1154,6 +1192,19 @@ def main():
                         help="Simultaneous mode: all agents act on same snapshot per round")
     parser.add_argument("--parallel", type=int, default=1,
                         help="Run N matches concurrently (default: 1)")
+    parser.add_argument("--temperature", type=float, default=1.0,
+                        help="LLM sampling temperature (default: 1.0). Lower = more deterministic. API backend only.")
+    # Procedural scenario generation
+    parser.add_argument("--generate", action="store_true",
+                        help="Generate a procedural scenario instead of using existing ones")
+    parser.add_argument("--gen-agents", type=int, default=6,
+                        help="Number of agents for generated scenario (default: 6)")
+    parser.add_argument("--gen-items", type=int, default=4,
+                        help="Number of items for generated scenario (default: 4)")
+    parser.add_argument("--gen-scarce", type=int, default=1,
+                        help="Number of scarce items for generated scenario (default: 1)")
+    parser.add_argument("--gen-seed", type=int, default=None,
+                        help="Seed for procedural scenario generation")
     args = parser.parse_args()
 
     if args.serve:
@@ -1162,6 +1213,8 @@ def main():
 
     if args.elo:
         print_elo_leaderboard()
+        compute_bt_ratings()
+        print_bt_leaderboard()
         from arena.runner import print_arena_leaderboard
         print_arena_leaderboard()
         return
@@ -1193,6 +1246,7 @@ def main():
         if RESULTS_FILE.exists():
             RESULTS_FILE.unlink()
         reset_ratings()
+        reset_bt()
         from arena.runner import reset_arena
         reset_arena()
         print("Cleared previous results and ELO ratings.")
@@ -1227,6 +1281,29 @@ def main():
         run_suite(test_models, args.verbose)
         return
 
+    # ---- Procedural scenario generation ----
+    if args.generate:
+        from scenario_gen import generate_scenario, save_procedural_scenario
+        gen_seed = args.gen_seed if args.gen_seed is not None else random.randint(0, 2**32 - 1)
+        scenario = generate_scenario(
+            num_agents=args.gen_agents,
+            num_items=args.gen_items,
+            num_scarce=args.gen_scarce,
+            seed=gen_seed,
+        )
+        path = save_procedural_scenario(scenario, overwrite=True)
+        print(f"Generated scenario: {scenario['name']}")
+        print(f"  Agents: {len(scenario['agents'])} | Items: {args.gen_items} | Scarce: {args.gen_scarce}")
+        print(f"  Seed: {gen_seed}")
+        print(f"  Saved to: {path}")
+
+        if args.models:
+            # Run eval on the generated scenario immediately
+            run_eval(scenario["name"], args.models, args.runs, args.verbose,
+                     simultaneous=args.simultaneous, parallel=args.parallel,
+                     temperature=args.temperature)
+        return
+
     # ---- Benchmark mode (hybrid anchor) ----
     if args.benchmark:
         if not args.models:
@@ -1240,7 +1317,8 @@ def main():
             print("Error: --models must include at least one model besides the anchor.")
             sys.exit(1)
         run_benchmark(scenario_name, args.anchor, test_models, args.runs or 3, args.verbose,
-                      simultaneous=args.simultaneous, parallel=args.parallel)
+                      simultaneous=args.simultaneous, parallel=args.parallel,
+                      temperature=args.temperature)
         return
 
     if not args.eval:
@@ -1284,10 +1362,12 @@ def main():
             print("  Example: --models haiku,opus")
             sys.exit(1)
         run_tournament(model_names[0], model_names[1], args.runs, args.verbose,
-                       simultaneous=args.simultaneous, parallel=args.parallel)
+                       simultaneous=args.simultaneous, parallel=args.parallel,
+                       temperature=args.temperature)
     else:
         run_eval(args.eval, args.models, args.runs, args.verbose,
-                 simultaneous=args.simultaneous, parallel=args.parallel)
+                 simultaneous=args.simultaneous, parallel=args.parallel,
+                 temperature=args.temperature)
 
 
 if __name__ == "__main__":

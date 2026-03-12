@@ -45,9 +45,15 @@ def compute_metrics(result):
     # Scarce item capture: how much of each scarce item each model ended up with
     scarce_capture = compute_scarce_capture(result)
 
+    # Pareto efficiency: what fraction of total possible goal completion was achieved?
+    total_achieved = sum(ar["goal_completion"] for ar in agent_results)
+    total_possible = len(agent_results)  # each agent's max is 1.0
+    pareto_efficiency = total_achieved / total_possible if total_possible > 0 else 0.0
+
     metrics = {
         "avg_goal_completion": round(avg_completion, 4),
         "model_goal_completion": model_avg,
+        "pareto_efficiency": round(pareto_efficiency, 4),
         "num_trades": num_trades,
         "num_turns": num_turns,
         "invalid_rate": round(invalid_rate, 4),

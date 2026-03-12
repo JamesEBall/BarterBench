@@ -5,7 +5,7 @@
 A competitive marketplace benchmark for AI agents with ELO ratings. N agents trade scarce resources through an order book across fixed rounds. Models are pitted head-to-head and rated via pairwise ELO — new models can be introduced at any time without re-running existing matches. Works with any LLM or agent framework.
 
 **Three modes:**
-- **Eval Suite** — one-click standardized evaluation. Runs a model against a haiku anchor across all 4 scenarios (12 runs total), producing ELO + composite scores. `python3 eval.py --suite --models sonnet`
+- **Eval Suite** — one-click standardized evaluation. Runs a model against a haiku anchor across all 4 scenarios (40 runs total), producing ELO + composite scores with 95% confidence intervals. `python3 eval.py --suite --models sonnet`
 - **Benchmark** — compare models head-to-head (haiku vs sonnet vs opus)
 - **Arena** — compare prompt strategies across models. Same benchmark, but contestants are (strategy, model) pairs. "Who can write the best barter agent prompt?"
 
@@ -291,36 +291,58 @@ Winner = m_A   if ModelScore(m_A) - ModelScore(m_B) ≥ 0.02
 
 For scenarios with scarcity metadata, we additionally track how much of each scarce item each model's agents secured in their final inventories. This measures a model's ability to capture contested resources — the key discriminating factor in competitive settings.
 
-### 4.5 Additional Metrics
+### 4.5 Pareto Efficiency
+
+We measure the **aggregate allocation efficiency** across all agents:
+
+```
+ParetoEfficiency = (1/N) × Σ_a GoalCompletion(a)
+```
+
+This measures whether the marketplace achieves mutually beneficial outcomes — a low Pareto efficiency with low individual scores indicates that agents are failing to find trades that exist, rather than genuinely competing for scarce resources.
+
+### 4.6 Additional Metrics
 
 | Metric | Description |
 |---|---|
 | **Invalid Rate** | Fraction of non-pass actions that were invalid (offering items not held, accepting non-existent offers) |
 | **Pass Rate** | Fraction of total turns spent passing |
 | **Trades per Round** | Average number of executed trades per round |
+| **95% Confidence Interval** | Standard error of mean goal completion across runs, reported as ±CI |
+| **Standard Deviation** | Variance in goal completion across runs, measuring result stability |
 
-## 5. ELO Rating System
+## 5. Rating Systems
 
-BarterBench uses the Elo rating system (Elo, 1978) for pairwise model comparison, following the approach popularized by Chatbot Arena (Chiang et al., 2024) for LLM evaluation.
+BarterBench provides two complementary rating systems for pairwise model comparison.
 
-### 5.1 Rating Updates
+### 5.1 ELO Ratings (Incremental)
 
-All models start at rating 1500. After each match, ratings update using:
+The classic Elo rating system (Elo, 1978), following the approach popularized by Chatbot Arena (Chiang et al., 2024). All models start at rating 1500. After each match, ratings update using:
 
 ```
 E_A = 1 / (1 + 10^((R_B - R_A) / 400))
 R_A' = R_A + K × (S_A - E_A)
 ```
 
-where *E_A* is the expected score, *S_A* ∈ {0, 0.5, 1} is the actual outcome, and *K* = 32.
+where *E_A* is the expected score, *S_A* ∈ {0, 0.5, 1} is the actual outcome, and *K* = 32. ELO updates are incremental — each match shifts ratings based on the previous state.
 
-### 5.2 Match Structure
+### 5.2 Bradley-Terry MLE (Global)
+
+In addition to incremental ELO, BarterBench computes **Bradley-Terry Maximum Likelihood Estimation** ratings. Unlike ELO (which is path-dependent — the order of matches affects the final rating), BT-MLE fits a global strength model to *all* match data simultaneously:
+
+```
+P(A beats B) = γ_A / (γ_A + γ_B)
+```
+
+The strength parameters γ are estimated via iterative MLE and converted to a 1500-centered scale (like ELO) for comparison. BT-MLE produces more stable ratings from fewer matches and is not sensitive to match ordering. Both rating systems are computed and displayed in the leaderboard and dashboard.
+
+### 5.3 Match Structure
 
 Each match proceeds as follows:
 
 1. Select a scenario
 2. Split agents 50/50 between two contestants (e.g., 6 agents → 3 each)
-3. **Randomly assign** contestants to agent slots (eliminates positional bias)
+3. **Stratified assignment**: for 2-model matchups, paired role slots (0&1, 2&3, etc.) get one of each model, ensuring neither model monopolizes structurally advantaged positions
 4. Run the marketplace for the scenario's fixed number of rounds
 5. Compare average goal completion → determine winner
 6. Update ELO ratings
@@ -341,13 +363,13 @@ A key property of Elo ratings: **new contestants can be added at any time** with
 
 ### Eval Suite (standardized one-click evaluation)
 
-Fixed battery: each test model vs haiku anchor across all 4 eval-compatible scenarios (gold_rush, water_crisis, spice_wars, grand_bazaar), 3 runs each. Produces comparable ELO + composite scores.
+Fixed battery: each test model vs haiku anchor across all 4 eval-compatible scenarios (gold_rush, water_crisis, spice_wars, grand_bazaar), 10 runs each. Produces comparable ELO + composite scores with 95% confidence intervals.
 
 ```bash
-# Evaluate sonnet (12 runs: 4 scenarios × 3 runs)
+# Evaluate sonnet (40 runs: 4 scenarios × 10 runs)
 python3 eval.py --suite --models sonnet
 
-# Evaluate multiple models (24 runs: 4 scenarios × 3 runs × 2 models)
+# Evaluate multiple models (80 runs: 4 scenarios × 10 runs × 2 models)
 python3 eval.py --suite --models sonnet,opus
 ```
 
@@ -397,10 +419,31 @@ python3 eval.py --arena --strategies aggressive,cooperative --eval gold_rush
 python3 eval.py --submit "my_strat" "Trade aggressively for scarce items"
 ```
 
+### Temperature Control
+
+Control LLM sampling temperature for reproducibility experiments (API backend only):
+
+```bash
+python3 eval.py --eval gold_rush --models haiku:3,sonnet:3 --temperature 0.5
+python3 eval.py --benchmark --models sonnet --runs 5 --temperature 0.3
+```
+
+### Procedural Scenario Generation
+
+Generate randomized but balanced scenarios with configurable scarcity:
+
+```bash
+# Generate and save a scenario
+python3 eval.py --generate --gen-agents 8 --gen-items 5 --gen-scarce 2 --gen-seed 42
+
+# Generate and immediately run
+python3 eval.py --generate --gen-agents 6 --gen-items 4 --models haiku:3,sonnet:3 --runs 3
+```
+
 ### Other Commands
 
 ```bash
-python3 eval.py --elo       # View ELO ratings
+python3 eval.py --elo       # View ELO + Bradley-Terry ratings
 python3 eval.py --list      # List scenarios & strategies
 python3 eval.py --serve     # Dashboard: replay viewer, aggregate model analytics, Eval Suite launcher
 python3 eval.py --clear     # Reset all results and ratings
@@ -430,7 +473,7 @@ Each agent operates under **strict information isolation**:
 | Recent executed trades (public record) | Other agents' strategies and reasoning |
 | Round number / time remaining | Who sent whispers to whom (unless you're involved) |
 
-Agents never see each other's private state. Public information flows through the order book and executed trades. Private offers (whispers) are P2P — only the sender and recipient know the offer exists. Each agent turn is a **stateless LLM call** — no conversation history carries over between turns.
+Agents never see each other's private state. Public information flows through the order book and executed trades. Private offers (whispers) are P2P — only the sender and recipient know the offer exists. Each agent maintains a **conversation history within a match** — previous rounds' reasoning and actions carry over, giving agents memory of their strategy and past interactions (capped at the last 3 rounds to control token usage). Each run uses a deterministic seed (derived from scenario name + run ID) for reproducible agent slot assignments, recorded in the result JSON.
 
 The gossip system means agents must decide on every turn: **broadcast to the market (maximize counterparties) or whisper to a specific trader (hide your strategy)**. This information asymmetry is a key dimension of agent intelligence — the best strategies balance transparency and secrecy based on market conditions.
 
@@ -438,19 +481,25 @@ The gossip system means agents must decide on every turn: **broadcast to the mar
 
 ```
 ├── eval.py           # CLI entry point, tournament orchestration
-├── agent.py          # LLM agent wrapper (API + CLI backends)
+├── agent.py          # LLM agent wrapper (API + CLI backends, stateful)
 ├── engine.py         # N-agent marketplace engine with order book
-├── scoring.py        # Goal completion, scarce item capture
+├── scoring.py        # Goal completion, scarce item capture, Pareto efficiency
 ├── elo.py            # ELO rating computation + persistence
+├── bradley_terry.py  # Bradley-Terry MLE ratings (global fit)
+├── scenario_gen.py   # Procedural scenario generation
 ├── dashboard.html    # Dashboard: replay viewer, aggregate analytics, experiment launcher
 ├── arena/            # Arena mode: prompt strategy competition
 │   ├── runner.py     # Arena orchestration with file-locked parallel runs
 │   └── strategies/   # Strategy prompt definitions (JSON)
-└── scenarios/        # Scenario definitions (JSON)
+└── scenarios/        # Scenario definitions (JSON + procedurally generated)
     ├── gold_rush.json
     ├── water_crisis.json
     └── spice_wars.json
 ```
+
+### Reproducibility
+
+Each run records a deterministic `seed` in its result JSON. The seed controls agent-to-slot assignment shuffling. To reproduce a run, use the same scenario, model config, and run_id. Note that LLM API sampling is inherently non-deterministic, so exact replay is not possible — but the experimental setup (slot assignments, turn order randomization) is fully reproducible.
 
 ### Adding new models
 
