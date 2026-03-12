@@ -355,6 +355,42 @@ tr.clickable:hover td { background: #e5e7eb; }
 .ev-pass { color: var(--text3); }
 .ev-invalid { color: var(--red); }
 
+.event { cursor: pointer; }
+.event:hover { background: var(--surface2); }
+.event.selected { background: var(--surface2); border: 1px solid var(--border); }
+
+.reasoning-panel {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  margin-top: 0.75rem;
+  display: none;
+}
+.reasoning-panel.visible { display: block; }
+.reasoning-panel .rp-label {
+  font-family: var(--mono);
+  font-size: 0.6rem;
+  color: var(--text3);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 0.4rem;
+}
+.reasoning-panel .rp-agent {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  font-weight: 600;
+  margin-bottom: 0.3rem;
+}
+.reasoning-panel .rp-text {
+  font-size: 0.75rem;
+  color: var(--text2);
+  line-height: 1.6;
+  white-space: pre-wrap;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
 .controls {
   display: flex;
   align-items: center;
@@ -474,6 +510,11 @@ tr.clickable:hover td { background: #e5e7eb; }
     <div id="obEntries"><span style="color:var(--text3);font-size:0.7rem">empty</span></div>
   </div>
   <div class="event-log" id="eventLog"></div>
+  <div class="reasoning-panel" id="reasoningPanel">
+    <div class="rp-label">Agent Reasoning</div>
+    <div class="rp-agent" id="rpAgent"></div>
+    <div class="rp-text" id="rpText"></div>
+  </div>
   <div class="summary-bar" id="summary"></div>
 </div>
 
@@ -827,13 +868,28 @@ function renderEvent(h) {
 
   const div = document.createElement('div');
   div.className = 'event';
+  const label = h.contestant && h.contestant !== model ? `${h.contestant} (${model})` : model;
   div.innerHTML = `
     <span class="ev-round">R${h.round}</span>
-    <span class="ev-agent" style="color:${color}">T${h.agent} ${model}</span>
+    <span class="ev-agent" style="color:${color}">T${h.agent} ${label}</span>
     <span class="ev-action ${actionClass}">${h.action.replace(/_/g,' ')}</span>
     <span class="ev-detail">${detail}</span>`;
+  const reasoning = h.reasoning || h.message || '';
+  if (reasoning) {
+    div.onclick = () => showReasoning(h.agent, label, color, reasoning);
+  }
   log.appendChild(div);
   log.scrollTop = log.scrollHeight;
+}
+
+function showReasoning(agentIdx, label, color, text) {
+  const panel = document.getElementById('reasoningPanel');
+  const agentEl = document.getElementById('rpAgent');
+  const textEl = document.getElementById('rpText');
+  panel.classList.add('visible');
+  agentEl.style.color = color;
+  agentEl.textContent = `Trader ${agentIdx} (${label})`;
+  textEl.textContent = text;
 }
 
 function applyAction(h) {
@@ -925,6 +981,7 @@ function restart() {
   renderAgents();
   renderOrderBook();
   document.getElementById('eventLog').innerHTML = '';
+  document.getElementById('reasoningPanel').classList.remove('visible');
   updateStep();
   renderSummary(false);
 }
