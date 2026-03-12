@@ -21,7 +21,13 @@ CLI_MODEL_MAP = {
 VALID_ACTIONS = {"post_offer", "accept_offer", "pass_turn"}
 
 JSON_SCHEMA_INSTRUCTION = """
-Respond with ONLY a JSON object (no other text) in this exact format:
+First, think step-by-step about your situation:
+1. What items do you still need? What do you have to trade?
+2. What's on the order book? Are any offers good for you?
+3. Which items are scarce? Who has leverage?
+4. What's your best move this turn and why?
+
+Then output your action as a JSON object on its own line:
 
 To post a new offer on the order book:
 {"action": "post_offer", "give": {"item": qty, ...}, "want": {"item": qty, ...}, "message": "your message"}

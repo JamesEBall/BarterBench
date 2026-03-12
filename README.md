@@ -333,7 +333,20 @@ BarterBench ships with three prompt strategies for the arena:
 
 Anyone can submit a new strategy — no code required, just a prompt. Strategies compete via pairwise ELO, with an optional cross-model dimension (run each strategy on haiku, sonnet, and opus to see which strategy-model combinations dominate).
 
-## 8. Architecture
+## 8. Information Model
+
+Each agent operates under **strict information isolation**:
+
+| Visible | Hidden |
+|---|---|
+| Own inventory and target | Other agents' inventories |
+| Open order book (offers) | Other agents' targets |
+| Recent public trades | Other agents' strategies |
+| Round number / time remaining | Other agents' reasoning |
+
+Agents never see each other's private state. All information flows through public market mechanisms (the order book and executed trades). Each agent turn is a **stateless LLM call** — no conversation history carries over between turns.
+
+## 9. Architecture
 
 ```
 barter_eval/
@@ -343,6 +356,9 @@ barter_eval/
 ├── elo.py            # ELO rating computation + persistence
 ├── eval.py           # CLI entry point, tournament orchestration
 ├── dashboard.html    # Dashboard: ELO leaderboard + trade replay viewer
+├── arena/            # Arena mode: prompt strategy competition
+│   ├── runner.py     # Arena orchestration with file-locked parallel runs
+│   └── strategies/   # Strategy prompt definitions (JSON)
 └── scenarios/        # Scenario definitions (JSON)
     ├── gold_rush.json
     ├── water_crisis.json
