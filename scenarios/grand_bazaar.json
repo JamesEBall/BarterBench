@@ -1,0 +1,24 @@
+{
+  "name": "grand_bazaar",
+  "description": "12 agents, 7 items. Silk and diamonds both scarce. Dense multi-hop trade chains, 6 paired roles for positional symmetry. The big arena benchmark scenario.",
+  "difficulty": "hard",
+  "max_rounds": 12,
+  "agents": [
+    {"role": "Trader 0",  "inventory": {"iron": 6, "timber": 0, "grain": 0, "spice": 0, "silk": 0, "diamonds": 0, "jade": 0}, "target": {"spice": 2, "silk": 2, "diamonds": 1}},
+    {"role": "Trader 1",  "inventory": {"iron": 6, "timber": 0, "grain": 0, "spice": 0, "silk": 0, "diamonds": 0, "jade": 0}, "target": {"spice": 2, "silk": 2, "diamonds": 1}},
+    {"role": "Trader 2",  "inventory": {"iron": 0, "timber": 6, "grain": 0, "spice": 0, "silk": 0, "diamonds": 0, "jade": 0}, "target": {"iron": 2, "diamonds": 1, "jade": 1}},
+    {"role": "Trader 3",  "inventory": {"iron": 0, "timber": 6, "grain": 0, "spice": 0, "silk": 0, "diamonds": 0, "jade": 0}, "target": {"iron": 2, "diamonds": 1, "jade": 1}},
+    {"role": "Trader 4",  "inventory": {"iron": 0, "timber": 0, "grain": 6, "spice": 0, "silk": 0, "diamonds": 0, "jade": 0}, "target": {"timber": 2, "spice": 1, "diamonds": 1, "jade": 1}},
+    {"role": "Trader 5",  "inventory": {"iron": 0, "timber": 0, "grain": 6, "spice": 0, "silk": 0, "diamonds": 0, "jade": 0}, "target": {"timber": 2, "spice": 1, "diamonds": 1, "jade": 1}},
+    {"role": "Trader 6",  "inventory": {"iron": 0, "timber": 0, "grain": 0, "spice": 6, "silk": 0, "diamonds": 0, "jade": 0}, "target": {"timber": 2, "silk": 2, "diamonds": 1}},
+    {"role": "Trader 7",  "inventory": {"iron": 0, "timber": 0, "grain": 0, "spice": 6, "silk": 0, "diamonds": 0, "jade": 0}, "target": {"timber": 2, "silk": 2, "diamonds": 1}},
+    {"role": "Trader 8",  "inventory": {"iron": 0, "timber": 0, "grain": 0, "spice": 0, "silk": 3, "diamonds": 0, "jade": 0}, "target": {"iron": 2, "grain": 1, "spice": 1, "jade": 1}},
+    {"role": "Trader 9",  "inventory": {"iron": 0, "timber": 0, "grain": 0, "spice": 0, "silk": 3, "diamonds": 0, "jade": 0}, "target": {"iron": 2, "grain": 1, "spice": 1, "jade": 1}},
+    {"role": "Trader 10", "inventory": {"iron": 0, "timber": 0, "grain": 0, "spice": 0, "silk": 0, "diamonds": 3, "jade": 5}, "target": {"iron": 1, "timber": 1, "grain": 2, "spice": 1}},
+    {"role": "Trader 11", "inventory": {"iron": 0, "timber": 0, "grain": 0, "spice": 0, "silk": 0, "diamonds": 3, "jade": 5}, "target": {"iron": 1, "timber": 1, "grain": 2, "spice": 1}}
+  ],
+  "scarcity": {
+    "silk": {"supply": 6, "demand": 8, "ratio": 0.75},
+    "diamonds": {"supply": 6, "demand": 8, "ratio": 0.75}
+  }
+}
