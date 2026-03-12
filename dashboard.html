@@ -548,6 +548,7 @@ svg text { font-family: var(--mono); }
   border-bottom: 1px solid var(--border-light);
   font-family: var(--mono);
 }
+.exp-item:hover { background: var(--surface2); }
 .exp-item .exp-top {
   display: flex;
   align-items: center;
@@ -943,12 +944,6 @@ svg text { font-family: var(--mono); }
   </div>
 </div>
 
-<!-- ==================== LEADERBOARD ==================== -->
-<div class="card">
-  <div class="card-label">leaderboard</div>
-  <table id="leaderboard"></table>
-</div>
-
 <div class="summary-bar" id="summary"></div>
 
 <!-- ==================== ANALYTICS CHARTS ==================== -->
@@ -956,24 +951,29 @@ svg text { font-family: var(--mono); }
   <div class="card-label" style="margin-bottom:1rem">analytics across all runs</div>
   <div class="filters" id="scenarioFilters" style="display:flex;gap:0.35rem;margin-bottom:1rem;flex-wrap:wrap"></div>
 
+  <div class="card" style="margin-bottom:1rem">
+    <div class="card-label">leaderboard</div>
+    <table id="leaderboard"></table>
+  </div>
+
   <div class="content-grid">
     <div class="card">
-      <div class="card-label">goal completion per run</div>
+      <div class="card-label">avg goal completion by model</div>
       <svg id="chartGoal" viewBox="0 0 460 260" preserveAspectRatio="xMidYMid meet" style="width:100%;display:block"></svg>
     </div>
     <div class="card">
-      <div class="card-label">elo rating over time</div>
+      <div class="card-label">elo rating</div>
       <svg id="chartElo" viewBox="0 0 460 260" preserveAspectRatio="xMidYMid meet" style="width:100%;display:block"></svg>
     </div>
   </div>
 
   <div class="content-grid">
     <div class="card">
-      <div class="card-label">trades per run</div>
+      <div class="card-label">avg trades by model</div>
       <svg id="chartTrades" viewBox="0 0 460 200" preserveAspectRatio="xMidYMid meet" style="width:100%;display:block"></svg>
     </div>
     <div class="card">
-      <div class="card-label">invalid action rate</div>
+      <div class="card-label">avg invalid rate by model</div>
       <svg id="chartInvalid" viewBox="0 0 460 200" preserveAspectRatio="xMidYMid meet" style="width:100%;display:block"></svg>
     </div>
   </div>
@@ -1752,12 +1752,28 @@ function selectRun(idx) {
   }];
   renderAgents();
   renderOrderBook();
-  renderGoalChart();
   document.getElementById('eventLog').innerHTML = '';
+  _lastRenderedRound = -1;
   document.getElementById('rpText').innerHTML = '<span class="rp-empty">Click an event or step through the replay</span>';
   document.getElementById('rpAgent').textContent = '';
+
+  // Fast-forward to end state so chart and agents show final results
+  for (let i = 0; i < currentRun.history.length; i++) {
+    const h = currentRun.history[i];
+    applyAction(h);
+    goalHistory.push({
+      step: i + 1,
+      completions: inventories.map((inv, j) => computeCompletion(inv, targets[j] || {}))
+    });
+    renderEvent(h);
+  }
+  currentStep = currentRun.history.length;
+
+  updateAgents();
+  renderOrderBook();
+  renderGoalChart();
   updateStep();
-  renderSummary(false);
+  renderSummary(true);
   renderParamPanel();
 
   // Load into scene
@@ -1927,15 +1943,43 @@ function renderGoalChart() {
   if (goalChartInstance) {
     goalChartInstance.data.labels = labels;
     goalChartInstance.data.datasets = datasets;
+    goalChartInstance.options.plugins.cursorLine.step = currentStep;
     goalChartInstance.update('none');
     return;
   }
+
+  // Custom plugin: vertical cursor line at current replay step
+  const cursorLinePlugin = {
+    id: 'cursorLine',
+    defaults: { step: 0 },
+    afterDraw(chart) {
+      const step = chart.options.plugins.cursorLine.step;
+      const totalSteps = currentRun ? currentRun.history.length : 0;
+      if (step <= 0 || step >= totalSteps) return;
+      const xScale = chart.scales.x;
+      const yScale = chart.scales.y;
+      const x = xScale.getPixelForValue(step);
+      const ctx = chart.ctx;
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(x, yScale.top);
+      ctx.lineTo(x, yScale.bottom);
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = 'rgba(220, 38, 38, 0.6)';
+      ctx.setLineDash([4, 3]);
+      ctx.stroke();
+      ctx.restore();
+    }
+  };
+
   goalChartInstance = new Chart(canvas, {
     type: 'line', data: { labels, datasets },
+    plugins: [cursorLinePlugin],
     options: {
       responsive: true, maintainAspectRatio: false, animation: false,
       interaction: { mode: 'index', intersect: false },
       plugins: {
+        cursorLine: { step: currentStep },
         legend: { position: 'bottom', labels: { font: { size: 10, family: "'SF Mono', monospace" }, boxWidth: 12, padding: 8 } },
         tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y}%` } }
       },
@@ -2000,7 +2044,8 @@ function renderEvent(h) {
 
   const reasoning = h.reasoning || '';
   const message = h.message || '';
-  const thoughtText = reasoning ? `${reasoning}\n\nAction message: ${message}` : message;
+  // Don't append raw JSON action message to reasoning — it's noise
+  const thoughtText = reasoning || (message && !message.trimStart().startsWith('{') ? message : '');
   if (thoughtText) {
     div.onclick = () => {
       log.querySelectorAll('.event.selected').forEach(e => e.classList.remove('selected'));
@@ -2018,8 +2063,16 @@ function renderEvent(h) {
 }
 
 function renderMarkdown(text) {
-  // Strip trailing code fences (LLM often ends reasoning with ```json)
+  // Strip code fences wrapping JSON (LLM often wraps action in ```json...```)
+  text = text.replace(/```[\w]*\n?([\s\S]*?)```/g, (_, code) => {
+    const trimmed = code.trim();
+    // If code block is just JSON, skip it entirely
+    if (trimmed.startsWith('{') || trimmed.startsWith('[')) return '';
+    return trimmed;
+  });
   text = text.replace(/```[\w]*\s*$/g, '').trimEnd();
+  // If the entire remaining text is JSON, show nothing (reasoning-only view)
+  if (text.trim().startsWith('{') && text.trim().endsWith('}')) return '<span class="rp-empty">no reasoning text</span>';
   let html = text
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
@@ -2297,157 +2350,156 @@ function renderFilters() {
   });
 }
 
-function renderGoalScatter() {
-  const data = filtered();
-  const svg = document.getElementById('chartGoal');
-  svg.innerHTML = '';
-  if (!data.length) { svg.innerHTML = '<text x="230" y="130" text-anchor="middle" fill="#9ca3af" font-size="11">no data yet</text>'; return; }
-
-  const W=460,H=260,p={t:16,r:20,b:32,l:42};
-  const pw=W-p.l-p.r, ph=H-p.t-p.b;
-  const xS = i => p.l + (i / Math.max(data.length-1, 1)) * pw;
-  const yS = v => p.t + ph - v * ph;
-
-  for(let i=0;i<=4;i++){
-    const y=p.t+(i/4)*ph, v=1-(i/4);
-    svg.innerHTML+=`<line x1="${p.l}" y1="${y}" x2="${W-p.r}" y2="${y}" stroke="#e5e7eb" stroke-width="1"/>`;
-    svg.innerHTML+=`<text x="${p.l-5}" y="${y+3}" text-anchor="end" fill="#9ca3af" font-size="8">${(v*100).toFixed(0)}%</text>`;
-  }
-  svg.innerHTML+=`<text x="${p.l+pw/2}" y="${H-4}" text-anchor="middle" fill="#9ca3af" font-size="9">run</text>`;
-
-  data.forEach((d,i) => {
-    const cx = xS(i);
+function aggregateByModel(data, valueFn) {
+  const agg = {};
+  data.forEach(d => {
     const mgc = getGoalCompletion(d) || {};
     Object.entries(mgc).forEach(([model, score]) => {
-      const cy = yS(score);
-      const c = gc(model);
-      svg.innerHTML += `<circle cx="${cx}" cy="${cy}" r="4" fill="${c}" opacity="0.85"><title>${d.scenario}: ${model} = ${(score*100).toFixed(0)}%</title></circle>`;
+      if (!agg[model]) agg[model] = { sum: 0, count: 0 };
+      const v = valueFn(d, model, score);
+      if (v !== null && v !== undefined) { agg[model].sum += v; agg[model].count++; }
     });
   });
+  return Object.entries(agg)
+    .filter(([, v]) => v.count > 0)
+    .map(([model, v]) => ({ model, avg: v.sum / v.count, count: v.count }))
+    .sort((a, b) => b.avg - a.avg);
+}
 
-  const models = [...new Set(allData.flatMap(d => Object.keys(getGoalCompletion(d) || {})))];
-  models.forEach((m,i) => {
-    const lx = p.l + i * 70;
-    svg.innerHTML += `<circle cx="${lx}" cy="${H-16}" r="3" fill="${gc(m)}"/>`;
-    svg.innerHTML += `<text x="${lx+6}" y="${H-13}" fill="#6b7280" font-size="8">${m}</text>`;
+function renderHorizontalBarChart(svgId, models, maxVal, formatLabel, formatTooltip, barColor) {
+  const svg = document.getElementById(svgId);
+  svg.innerHTML = '';
+  if (!models.length) { svg.innerHTML = '<text x="230" y="100" text-anchor="middle" fill="#9ca3af" font-size="11">no data yet</text>'; return; }
+
+  const W = 460, H = Math.max(models.length * 36 + 40, 80);
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  const p = { t: 8, r: 20, b: 8, l: 80 };
+  const pw = W - p.l - p.r, ph = H - p.t - p.b;
+  const barH = Math.min(24, ph / models.length - 4);
+
+  // grid lines
+  for (let i = 0; i <= 4; i++) {
+    const x = p.l + (i / 4) * pw;
+    const v = (i / 4) * maxVal;
+    svg.innerHTML += `<line x1="${x}" y1="${p.t}" x2="${x}" y2="${H - p.b}" stroke="#e5e7eb" stroke-width="1"/>`;
+    svg.innerHTML += `<text x="${x}" y="${H - p.b + 12}" text-anchor="middle" fill="#9ca3af" font-size="8">${formatLabel(v)}</text>`;
+  }
+
+  models.forEach((m, i) => {
+    const y = p.t + (i / models.length) * ph + (ph / models.length - barH) / 2;
+    const barW = (m.avg / maxVal) * pw;
+    const color = barColor ? barColor(m) : gc(m.model);
+    svg.innerHTML += `<text x="${p.l - 6}" y="${y + barH / 2 + 3}" text-anchor="end" fill="#6b7280" font-size="9">${m.model}</text>`;
+    svg.innerHTML += `<rect x="${p.l}" y="${y}" width="${Math.max(barW, 1)}" height="${barH}" rx="3" fill="${color}" opacity="0.8"><title>${formatTooltip(m)}</title></rect>`;
+    svg.innerHTML += `<text x="${p.l + barW + 4}" y="${y + barH / 2 + 3}" fill="#374151" font-size="9" font-weight="500">${formatLabel(m.avg)}</text>`;
   });
+}
+
+function renderGoalScatter() {
+  const data = filtered();
+  const models = aggregateByModel(data, (d, model, score) => score);
+  const maxVal = Math.min(Math.max(...models.map(m => m.avg), 0.01) * 1.15, 1);
+  renderHorizontalBarChart('chartGoal', models, maxVal,
+    v => (v * 100).toFixed(0) + '%',
+    m => `${m.model}: ${(m.avg * 100).toFixed(1)}% avg goal (${m.count} runs)`
+  );
 }
 
 function renderEloChart() {
   const svg = document.getElementById('chartElo');
   svg.innerHTML = '';
-  if (!matchLog.length) { svg.innerHTML = '<text x="230" y="130" text-anchor="middle" fill="#9ca3af" font-size="11">no matches yet</text>'; return; }
+  if (!Object.keys(eloRatings).length) { svg.innerHTML = '<text x="230" y="100" text-anchor="middle" fill="#9ca3af" font-size="11">no elo data</text>'; return; }
 
-  const history = {};
-  matchLog.forEach((m, idx) => {
-    const after = m.elo_after || {};
-    Object.entries(after).forEach(([name, elo]) => {
-      if (!history[name]) history[name] = [];
-      history[name].push({ idx, elo });
-    });
-  });
+  const models = Object.entries(eloRatings)
+    .map(([model, elo]) => ({ model, avg: elo, count: 1 }))
+    .sort((a, b) => b.avg - a.avg);
 
-  const contestants = Object.keys(history);
-  if (!contestants.length) { svg.innerHTML = '<text x="230" y="130" text-anchor="middle" fill="#9ca3af" font-size="11">no elo data</text>'; return; }
+  // ELO chart: bars relative to min, showing meaningful differences
+  const W = 460, H = Math.max(models.length * 36 + 40, 80);
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  const p = { t: 8, r: 20, b: 8, l: 80 };
+  const pw = W - p.l - p.r, ph = H - p.t - p.b;
+  const barH = Math.min(24, ph / models.length - 4);
 
-  const W=460,H=260,p={t:16,r:100,b:32,l:42};
-  const pw=W-p.l-p.r, ph=H-p.t-p.b;
+  const minElo = Math.min(...models.map(m => m.avg), 1500);
+  const maxElo = Math.max(...models.map(m => m.avg), 1500);
+  const pad = Math.max((maxElo - minElo) * 0.15, 20);
+  const chartMin = Math.floor((minElo - pad) / 10) * 10;
+  const chartMax = Math.ceil((maxElo + pad) / 10) * 10;
+  const chartRange = chartMax - chartMin;
 
-  let minElo = 1500, maxElo = 1500;
-  contestants.forEach(c => { history[c].forEach(h => { minElo = Math.min(minElo, h.elo); maxElo = Math.max(maxElo, h.elo); }); });
-  const eloPad = Math.max((maxElo - minElo) * 0.1, 20);
-  minElo = Math.floor((minElo - eloPad) / 10) * 10;
-  maxElo = Math.ceil((maxElo + eloPad) / 10) * 10;
-
-  const totalMatches = matchLog.length;
-  const xS = i => p.l + (i / Math.max(totalMatches - 1, 1)) * pw;
-  const yS = v => p.t + ph - ((v - minElo) / (maxElo - minElo)) * ph;
-
-  const eloStep = Math.max(Math.round((maxElo - minElo) / 5 / 10) * 10, 10);
-  for (let v = Math.ceil(minElo / eloStep) * eloStep; v <= maxElo; v += eloStep) {
-    const y = yS(v);
-    svg.innerHTML += `<line x1="${p.l}" y1="${y}" x2="${W-p.r}" y2="${y}" stroke="#e5e7eb" stroke-width="1"/>`;
-    svg.innerHTML += `<text x="${p.l-5}" y="${y+3}" text-anchor="end" fill="#9ca3af" font-size="8">${v}</text>`;
+  // Grid lines
+  const step = Math.max(Math.round(chartRange / 4 / 10) * 10, 10);
+  for (let v = Math.ceil(chartMin / step) * step; v <= chartMax; v += step) {
+    const x = p.l + ((v - chartMin) / chartRange) * pw;
+    svg.innerHTML += `<line x1="${x}" y1="${p.t}" x2="${x}" y2="${H - p.b}" stroke="#e5e7eb" stroke-width="1"/>`;
+    svg.innerHTML += `<text x="${x}" y="${H - p.b + 12}" text-anchor="middle" fill="#9ca3af" font-size="8">${v}</text>`;
   }
-  const y1500 = yS(1500);
-  svg.innerHTML += `<line x1="${p.l}" y1="${y1500}" x2="${W-p.r}" y2="${y1500}" stroke="#d1d5db" stroke-width="1" stroke-dasharray="4,3"/>`;
+  // 1500 baseline
+  const x1500 = p.l + ((1500 - chartMin) / chartRange) * pw;
+  if (x1500 >= p.l && x1500 <= W - p.r) {
+    svg.innerHTML += `<line x1="${x1500}" y1="${p.t}" x2="${x1500}" y2="${H - p.b}" stroke="#d1d5db" stroke-width="1" stroke-dasharray="4,3"/>`;
+  }
 
-  contestants.forEach(c => {
-    const pts = history[c];
-    const color = gc(c);
-    if (pts.length < 2) {
-      svg.innerHTML += `<circle cx="${xS(pts[0].idx)}" cy="${yS(pts[0].elo)}" r="3" fill="${color}"><title>${c}: ${pts[0].elo.toFixed(0)}</title></circle>`;
-      return;
-    }
-    const pathParts = pts.map((pt, i) => `${i === 0 ? 'M' : 'L'}${xS(pt.idx).toFixed(1)},${yS(pt.elo).toFixed(1)}`);
-    svg.innerHTML += `<path d="${pathParts.join(' ')}" fill="none" stroke="${color}" stroke-width="1.5" opacity="0.8"/>`;
-    const last = pts[pts.length - 1];
-    svg.innerHTML += `<circle cx="${xS(last.idx)}" cy="${yS(last.elo)}" r="3" fill="${color}"><title>${c}: ${last.elo.toFixed(0)}</title></circle>`;
-  });
-
-  const sorted = contestants.map(c => ({ name: c, elo: history[c][history[c].length - 1].elo })).sort((a, b) => b.elo - a.elo);
-  sorted.forEach((s, i) => {
-    const ly = p.t + 6 + i * 14;
-    const lx = W - p.r + 8;
-    svg.innerHTML += `<circle cx="${lx}" cy="${ly}" r="3" fill="${gc(s.name)}"/>`;
-    svg.innerHTML += `<text x="${lx+6}" y="${ly+3}" fill="#6b7280" font-size="8">${s.name} (${s.elo.toFixed(0)})</text>`;
+  models.forEach((m, i) => {
+    const y = p.t + (i / models.length) * ph + (ph / models.length - barH) / 2;
+    const barW = ((m.avg - chartMin) / chartRange) * pw;
+    const color = gc(m.model);
+    svg.innerHTML += `<text x="${p.l - 6}" y="${y + barH / 2 + 3}" text-anchor="end" fill="#6b7280" font-size="9">${m.model}</text>`;
+    svg.innerHTML += `<rect x="${p.l}" y="${y}" width="${Math.max(barW, 1)}" height="${barH}" rx="3" fill="${color}" opacity="0.8"><title>${m.model}: ${Math.round(m.avg)} ELO</title></rect>`;
+    svg.innerHTML += `<text x="${p.l + barW + 4}" y="${y + barH / 2 + 3}" fill="#374151" font-size="9" font-weight="500">${Math.round(m.avg)}</text>`;
   });
 }
 
 function renderTradesChart() {
   const data = filtered();
-  const svg = document.getElementById('chartTrades');
-  svg.innerHTML = '';
-  if (!data.length) { svg.innerHTML = '<text x="230" y="100" text-anchor="middle" fill="#9ca3af" font-size="11">no data yet</text>'; return; }
-
-  const W=460,H=200,p={t:12,r:20,b:28,l:42};
-  const pw=W-p.l-p.r, ph=H-p.t-p.b;
-  const maxTrades = Math.max(...data.map(d => d.num_trades || 0), 1);
-  const barW = Math.max(2, Math.min(12, pw / data.length - 2));
-
-  for(let i=0;i<=4;i++){
-    const y=p.t+(i/4)*ph, v=maxTrades*(1-i/4);
-    svg.innerHTML+=`<line x1="${p.l}" y1="${y}" x2="${W-p.r}" y2="${y}" stroke="#e5e7eb" stroke-width="1"/>`;
-    svg.innerHTML+=`<text x="${p.l-5}" y="${y+3}" text-anchor="end" fill="#9ca3af" font-size="8">${Math.round(v)}</text>`;
-  }
-
-  data.forEach((d, i) => {
-    const x = p.l + (i / Math.max(data.length-1, 1)) * pw - barW/2;
-    const val = d.num_trades || 0;
-    const barH = (val / maxTrades) * ph;
-    const y = p.t + ph - barH;
+  // Aggregate trades per model: attribute each run's trades equally to all participating models
+  const agg = {};
+  data.forEach(d => {
     const models = Object.keys(getGoalCompletion(d) || {});
-    const color = models.length ? gc(models[0]) : '#6b7280';
-    svg.innerHTML += `<rect x="${x}" y="${y}" width="${barW}" height="${barH}" rx="1" fill="${color}" opacity="0.7"><title>${d.scenario} #${d.run_id}: ${val} trades</title></rect>`;
+    const trades = d.num_trades || 0;
+    models.forEach(model => {
+      if (!agg[model]) agg[model] = { sum: 0, count: 0 };
+      agg[model].sum += trades;
+      agg[model].count++;
+    });
   });
-  svg.innerHTML+=`<text x="${p.l+pw/2}" y="${H-4}" text-anchor="middle" fill="#9ca3af" font-size="9">run</text>`;
+  const models = Object.entries(agg)
+    .filter(([, v]) => v.count > 0)
+    .map(([model, v]) => ({ model, avg: v.sum / v.count, count: v.count }))
+    .sort((a, b) => b.avg - a.avg);
+
+  const maxVal = Math.max(...models.map(m => m.avg), 1) * 1.15;
+  renderHorizontalBarChart('chartTrades', models, maxVal,
+    v => Math.round(v).toString(),
+    m => `${m.model}: ${m.avg.toFixed(1)} avg trades (${m.count} runs)`
+  );
 }
 
 function renderInvalidChart() {
   const data = filtered();
-  const svg = document.getElementById('chartInvalid');
-  svg.innerHTML = '';
-  if (!data.length) { svg.innerHTML = '<text x="230" y="100" text-anchor="middle" fill="#9ca3af" font-size="11">no data yet</text>'; return; }
-
-  const W=460,H=200,p={t:12,r:20,b:28,l:42};
-  const pw=W-p.l-p.r, ph=H-p.t-p.b;
-  const maxRate = Math.max(...data.map(d => d.invalid_rate || 0), 0.01);
-  const barW = Math.max(2, Math.min(12, pw / data.length - 2));
-
-  for(let i=0;i<=4;i++){
-    const y=p.t+(i/4)*ph, v=maxRate*(1-i/4);
-    svg.innerHTML+=`<line x1="${p.l}" y1="${y}" x2="${W-p.r}" y2="${y}" stroke="#e5e7eb" stroke-width="1"/>`;
-    svg.innerHTML+=`<text x="${p.l-5}" y="${y+3}" text-anchor="end" fill="#9ca3af" font-size="8">${(v*100).toFixed(0)}%</text>`;
-  }
-
-  data.forEach((d, i) => {
-    const x = p.l + (i / Math.max(data.length-1, 1)) * pw - barW/2;
-    const val = d.invalid_rate || 0;
-    const barH = (val / maxRate) * ph;
-    const y = p.t + ph - barH;
-    svg.innerHTML += `<rect x="${x}" y="${y}" width="${barW}" height="${barH}" rx="1" fill="#dc2626" opacity="0.6"><title>${d.scenario} #${d.run_id}: ${(val*100).toFixed(1)}% invalid</title></rect>`;
+  // Aggregate invalid rate per model
+  const agg = {};
+  data.forEach(d => {
+    const models = Object.keys(getGoalCompletion(d) || {});
+    const rate = d.invalid_rate || 0;
+    models.forEach(model => {
+      if (!agg[model]) agg[model] = { sum: 0, count: 0 };
+      agg[model].sum += rate;
+      agg[model].count++;
+    });
   });
-  svg.innerHTML+=`<text x="${p.l+pw/2}" y="${H-4}" text-anchor="middle" fill="#9ca3af" font-size="9">run</text>`;
+  const models = Object.entries(agg)
+    .filter(([, v]) => v.count > 0)
+    .map(([model, v]) => ({ model, avg: v.sum / v.count, count: v.count }))
+    .sort((a, b) => b.avg - a.avg);
+
+  const maxVal = Math.max(...models.map(m => m.avg), 0.01) * 1.15;
+  renderHorizontalBarChart('chartInvalid', models, maxVal,
+    v => (v * 100).toFixed(0) + '%',
+    m => `${m.model}: ${(m.avg * 100).toFixed(1)}% avg invalid (${m.count} runs)`,
+    () => '#dc2626'
+  );
 }
 
 function renderHistory() {
@@ -2676,16 +2728,16 @@ function renderExperiments() {
 
     let controls = '';
     if (exp.status === 'running' || exp.status === 'queued') {
-      controls += `<button class="exp-ctrl-btn cancel" onclick="cancelExperiment('${exp.id}')">&#10005; Cancel</button>`;
+      controls += `<button class="exp-ctrl-btn cancel" onclick="event.stopPropagation();cancelExperiment('${exp.id}')">&#10005; Cancel</button>`;
     }
     if (exp.status === 'queued') {
-      controls += `<button class="exp-ctrl-btn" onclick="editExperiment('${exp.id}')">Edit</button>`;
+      controls += `<button class="exp-ctrl-btn" onclick="event.stopPropagation();editExperiment('${exp.id}')">Edit</button>`;
     }
     if (exp.status === 'completed' || exp.status === 'failed' || exp.status === 'cancelled') {
-      controls += `<button class="exp-ctrl-btn" onclick="dismissExperiment('${exp.id}')">&#10005; Dismiss</button>`;
+      controls += `<button class="exp-ctrl-btn" onclick="event.stopPropagation();dismissExperiment('${exp.id}')">&#10005; Dismiss</button>`;
     }
 
-    return `<div class="exp-item">
+    return `<div class="exp-item" onclick="viewExperimentRun('${exp.id}')" style="cursor:pointer">
       <div class="exp-top">
         ${badges}
         <span class="exp-scenario">${(cfg.scenario || '').replace(/_/g, ' ')}</span>
@@ -2706,6 +2758,34 @@ async function cancelExperiment(id) {
     });
     pollExperiments();
   } catch {}
+}
+
+function viewExperimentRun(expId) {
+  const exp = experiments.find(e => e.id === expId);
+  if (!exp) return;
+  const cfg = exp.config || {};
+  const scenario = cfg.scenario || '';
+  const startedAt = exp.started_at || exp.created_at || '';
+
+  // Find runs that match this experiment: same scenario, created after experiment started
+  const runs = allData.filter(d => d.history && d.history.length);
+  let candidates = runs;
+
+  // For suite mode, match any scenario after the experiment started
+  if (cfg.mode !== 'suite' && scenario && scenario !== 'all (suite)') {
+    candidates = candidates.filter(d => d.scenario === scenario);
+  }
+
+  if (startedAt) {
+    candidates = candidates.filter(d => d.timestamp && d.timestamp >= startedAt);
+  }
+
+  // Select the most recent matching run
+  if (candidates.length) {
+    candidates.sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));
+    const idx = runs.indexOf(candidates[0]);
+    if (idx >= 0) selectRun(idx);
+  }
 }
 
 let dismissedExperiments = new Set(JSON.parse(localStorage.getItem('dismissedExps') || '[]'));
@@ -2754,7 +2834,7 @@ function renderParamPanel() {
   }
 
   panel.classList.add('visible');
-  panel.classList.remove('expanded');
+  // Don't collapse if already expanded — preserve user's toggle state
 
   const r = currentRun;
   const scenario = r.scenario || 'unknown';

@@ -402,7 +402,7 @@ python3 eval.py --submit "my_strat" "Trade aggressively for scarce items"
 ```bash
 python3 eval.py --elo       # View ELO ratings
 python3 eval.py --list      # List scenarios & strategies
-python3 eval.py --serve     # Dashboard with Eval Suite launcher + replay viewer
+python3 eval.py --serve     # Dashboard: replay viewer, aggregate model analytics, Eval Suite launcher
 python3 eval.py --clear     # Reset all results and ratings
 ```
 
@@ -442,7 +442,7 @@ The gossip system means agents must decide on every turn: **broadcast to the mar
 ├── engine.py         # N-agent marketplace engine with order book
 ├── scoring.py        # Goal completion, scarce item capture
 ├── elo.py            # ELO rating computation + persistence
-├── dashboard.html    # Dashboard: ELO leaderboard + trade replay viewer
+├── dashboard.html    # Dashboard: replay viewer, aggregate analytics, experiment launcher
 ├── arena/            # Arena mode: prompt strategy competition
 │   ├── runner.py     # Arena orchestration with file-locked parallel runs
 │   └── strategies/   # Strategy prompt definitions (JSON)

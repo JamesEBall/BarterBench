@@ -186,7 +186,8 @@ def record_arena_match(entry):
 # ---- Run a single arena match ----
 
 def run_arena_match(scenario_name, scenario, strat_a, strat_b, run_id, verbose,
-                    model_a=None, model_b=None, label_a=None, label_b=None):
+                    model_a=None, model_b=None, label_a=None, label_b=None,
+                    simultaneous=False):
     """Run a single arena match between two contestants."""
     num_agents = len(scenario["agents"])
     half_a, half_b = auto_model_config(scenario)
@@ -216,7 +217,7 @@ def run_arena_match(scenario_name, scenario, strat_a, strat_b, run_id, verbose,
     print(f"  Running marketplace...", end="", flush=True)
 
     try:
-        engine = MarketEngine(scenario, agents)
+        engine = MarketEngine(scenario, agents, simultaneous=simultaneous, run_id=run_id)
         result = engine.run()
         result["scenario_data"] = scenario
         metrics = compute_metrics(result)
@@ -300,7 +301,8 @@ def run_arena_match(scenario_name, scenario, strat_a, strat_b, run_id, verbose,
 
 # ---- Arena orchestration ----
 
-def run_arena(strategy_names, scenario_name, runs_per_matchup, verbose, models=None, workers=4):
+def run_arena(strategy_names, scenario_name, runs_per_matchup, verbose, models=None, workers=4,
+              simultaneous=False):
     """Run arena: all pairwise matchups between strategies.
 
     If models is provided (list of model names), each strategy is run with each model,
@@ -363,7 +365,8 @@ def run_arena(strategy_names, scenario_name, runs_per_matchup, verbose, models=N
                 print(f"\n  Match {match_num}/{total_matches}")
 
                 entry = run_arena_match(scenario_n, scenario, strat_a, strat_b, run_id, verbose,
-                                        model_a=model_a, model_b=model_b, label_a=label_a, label_b=label_b)
+                                        model_a=model_a, model_b=model_b, label_a=label_a, label_b=label_b,
+                                        simultaneous=simultaneous)
 
                 # Atomic append to shared results file
                 with _file_lock(ARENA_RESULTS):
