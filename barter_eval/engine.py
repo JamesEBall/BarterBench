@@ -56,11 +56,12 @@ class MarketEngine:
         ]
 
     def _write_live(self, initial_inventories, start_time):
-        """Write current match state to live.json for dashboard streaming."""
+        """Write current match state to live_<scenario>.json for dashboard streaming."""
         try:
             live_dir = Path(__file__).parent / "arena"
             live_dir.mkdir(parents=True, exist_ok=True)
-            live_file = live_dir / "live.json"
+            scenario_name = self.scenario.get("name", "match").replace(" ", "_")
+            live_file = live_dir / f"live_{scenario_name}.json"
             agent_results = []
             for i in range(self.num_agents):
                 ar = {
