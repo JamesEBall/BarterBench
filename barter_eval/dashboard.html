@@ -479,6 +479,11 @@ tr.clickable:hover td { background: #e5e7eb; }
 </div>
 
 <div class="card">
+  <div class="card-label">elo rating over time</div>
+  <svg id="eloChart" viewBox="0 0 940 300" preserveAspectRatio="xMidYMid meet"></svg>
+</div>
+
+<div class="card">
   <div class="card-label">leaderboard</div>
   <table id="leaderboard"></table>
 </div>
@@ -615,6 +620,7 @@ function renderOverview() {
   renderStats();
   renderFilters();
   renderChart();
+  renderEloChart();
   renderLeaderboard();
   renderHistory();
 }
@@ -692,6 +698,95 @@ function renderChart() {
     const lx = p.l + i * 80;
     svg.innerHTML += `<circle cx="${lx}" cy="${H-20}" r="3.5" fill="${gc(m)}"/>`;
     svg.innerHTML += `<text x="${lx+7}" y="${H-17}" fill="#6b7280" font-size="9">${m}</text>`;
+  });
+}
+
+function renderEloChart() {
+  const svg = document.getElementById('eloChart');
+  svg.innerHTML = '';
+  if (!matchLog.length) {
+    svg.innerHTML = '<text x="470" y="150" text-anchor="middle" fill="#9ca3af" font-size="13">no matches yet</text>';
+    return;
+  }
+
+  // Build ELO history: for each contestant, track rating after each match
+  const history = {};  // contestant -> [{match_idx, elo}]
+  matchLog.forEach((m, idx) => {
+    const after = m.elo_after || {};
+    Object.entries(after).forEach(([name, elo]) => {
+      if (!history[name]) history[name] = [];
+      history[name].push({ idx, elo });
+    });
+  });
+
+  const contestants = Object.keys(history);
+  if (!contestants.length) {
+    svg.innerHTML = '<text x="470" y="150" text-anchor="middle" fill="#9ca3af" font-size="13">no elo data</text>';
+    return;
+  }
+
+  const W = 940, H = 300, p = { t: 20, r: 140, b: 36, l: 50 };
+  const pw = W - p.l - p.r, ph = H - p.t - p.b;
+
+  // Find ELO range
+  let minElo = 1500, maxElo = 1500;
+  contestants.forEach(c => {
+    history[c].forEach(h => {
+      minElo = Math.min(minElo, h.elo);
+      maxElo = Math.max(maxElo, h.elo);
+    });
+  });
+  const eloPad = Math.max((maxElo - minElo) * 0.1, 20);
+  minElo = Math.floor((minElo - eloPad) / 10) * 10;
+  maxElo = Math.ceil((maxElo + eloPad) / 10) * 10;
+
+  const totalMatches = matchLog.length;
+  const xS = i => p.l + (i / Math.max(totalMatches - 1, 1)) * pw;
+  const yS = v => p.t + ph - ((v - minElo) / (maxElo - minElo)) * ph;
+
+  // Grid lines
+  const eloStep = Math.max(Math.round((maxElo - minElo) / 5 / 10) * 10, 10);
+  for (let v = Math.ceil(minElo / eloStep) * eloStep; v <= maxElo; v += eloStep) {
+    const y = yS(v);
+    svg.innerHTML += `<line x1="${p.l}" y1="${y}" x2="${W-p.r}" y2="${y}" stroke="#e5e7eb" stroke-width="1"/>`;
+    svg.innerHTML += `<text x="${p.l-6}" y="${y+3}" text-anchor="end" fill="#9ca3af" font-size="9">${v}</text>`;
+  }
+  // 1500 baseline
+  const y1500 = yS(1500);
+  svg.innerHTML += `<line x1="${p.l}" y1="${y1500}" x2="${W-p.r}" y2="${y1500}" stroke="#d1d5db" stroke-width="1" stroke-dasharray="4,3"/>`;
+
+  svg.innerHTML += `<text x="${p.l+pw/2}" y="${H-4}" text-anchor="middle" fill="#9ca3af" font-size="10">match</text>`;
+
+  // Draw lines for each contestant
+  contestants.forEach(c => {
+    const pts = history[c];
+    const color = gc(c);
+    if (pts.length < 2) {
+      const pt = pts[0];
+      svg.innerHTML += `<circle cx="${xS(pt.idx)}" cy="${yS(pt.elo)}" r="4" fill="${color}" opacity="0.85"><title>${c}: ${pt.elo.toFixed(0)}</title></circle>`;
+      return;
+    }
+
+    // Draw path
+    const pathParts = pts.map((pt, i) => `${i === 0 ? 'M' : 'L'}${xS(pt.idx).toFixed(1)},${yS(pt.elo).toFixed(1)}`);
+    svg.innerHTML += `<path d="${pathParts.join(' ')}" fill="none" stroke="${color}" stroke-width="2" opacity="0.8"/>`;
+
+    // End dot with current ELO
+    const last = pts[pts.length - 1];
+    svg.innerHTML += `<circle cx="${xS(last.idx)}" cy="${yS(last.elo)}" r="4" fill="${color}"><title>${c}: ${last.elo.toFixed(0)}</title></circle>`;
+  });
+
+  // Legend (right side, sorted by final ELO)
+  const sorted = contestants.map(c => ({
+    name: c,
+    elo: history[c][history[c].length - 1].elo
+  })).sort((a, b) => b.elo - a.elo);
+
+  sorted.forEach((s, i) => {
+    const ly = p.t + 8 + i * 16;
+    const lx = W - p.r + 10;
+    svg.innerHTML += `<circle cx="${lx}" cy="${ly}" r="3.5" fill="${gc(s.name)}"/>`;
+    svg.innerHTML += `<text x="${lx+8}" y="${ly+3.5}" fill="#6b7280" font-size="9">${s.name} (${s.elo.toFixed(0)})</text>`;
   });
 }
 
