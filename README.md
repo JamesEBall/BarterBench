@@ -1,100 +1,336 @@
-# Barter Eval
+# BarterBench
 
-A benchmark for evaluating LLM bartering capabilities. Inspired by [autoresearch](https://github.com/karpathy/autoresearch) — same autonomous iteration loop, but instead of optimizing a training script, we iteratively improve an eval that measures how well different Claude models negotiate and trade.
+A competitive marketplace benchmark for AI agents with ELO ratings. N agents trade scarce resources through an order book across fixed rounds. Models are pitted head-to-head and rated via pairwise ELO — new models can be introduced at any time without re-running existing matches. Works with any LLM or agent framework.
 
-## What it does
+## 1. Motivation
 
-Two Claude agents are placed in a bartering scenario with private inventories and valuations. They negotiate through structured tool use (propose, accept, reject, end) across multiple rounds. The eval measures how much economic surplus they capture and how efficiently they trade.
+In *The Wealth of Nations* (1776), Adam Smith hypothesized that money arose because barter was too inconvenient — his famous example of the butcher, brewer, and baker who need a common medium of exchange. This "barter origin of money" narrative was later challenged by anthropologists like David Graeber (*Debt: The First 5,000 Years*, 2011), who argued that pure barter economies likely never existed at scale, precisely because the coordination problem is so hard. That coordination problem — finding trade partners, reasoning about indirect exchanges, competing for scarce goods — is exactly what makes barter a compelling test of agent intelligence.
 
-## Quick start
+Existing multi-agent benchmarks for language models are either cooperative (everyone can succeed), limited to 2-agent dyads, or treat economic reasoning as incidental. None capture the core challenge of **competitive resource allocation under scarcity** — where one agent's gain is another's loss.
 
-```bash
-# Run eval: haiku vs opus across all scenarios
-python3 -m barter_eval --models haiku opus --runs 1
+| Benchmark | Agents | Competition | Scarcity | LLM-native |
+|---|---|---|---|---|
+| NegotiationArena (Bianchi et al., ICML 2024) | 2 | Yes | No | Yes |
+| Melting Pot (Agapiou et al., 2023) | N | Yes | Yes | No (RL) |
+| SOTOPIA (Zhou et al., 2024) | 2 | Partial | No | Yes |
+| Chatbot Arena (Chiang et al., 2024) | 1 | Pairwise | N/A | Yes |
+| **BarterBench** | **N** | **Yes** | **Yes** | **Yes** |
 
-# Run a specific scenario
-python3 -m barter_eval --models haiku opus --scenarios fruit_trade
+BarterBench is the first benchmark that combines N-agent interaction, designed scarcity, and competitive ELO-style evaluation for language model agents.
 
-# View the dashboard (chart + leaderboard + replays)
-python3 -m barter_eval --serve
-# → open http://localhost:8080/dashboard.html
+## 2. Problem Formulation
 
-# Verbose mode: print full negotiation transcripts
-python3 -m barter_eval --models haiku opus -v
+### 2.1 Environment
 
-# Clear previous results
-python3 -m barter_eval --models haiku opus --clear
+A **marketplace** is a tuple *(A, I, T, R, O)* where:
+
+- **A** = {a₁, ..., aₙ} is a set of N agents
+- **I** = {i₁, ..., iₘ} is a set of M tradeable item types
+- **T** ∈ ℕ is the maximum number of trading rounds
+- **R** : A → (I → ℕ) maps each agent to a starting inventory
+- **O** : A → (I → ℕ) maps each agent to a target inventory (goal state)
+
+The environment is **closed**: no items are created or destroyed. Total supply of each item is fixed across all agents. Items transfer only via bilateral trades.
+
+### 2.2 Scarcity Constraint
+
+For at least one item *i*, the **aggregate demand exceeds aggregate supply**:
+
+```
+Σ_a O(a, i) > Σ_a R(a, i)
 ```
 
-## Architecture
+This is the key design property. It guarantees that not all agents can fully achieve their goals — creating genuine winners and losers. Scarcity is what separates BarterBench from cooperative trading tasks where everyone can succeed through sufficient coordination.
+
+### 2.3 The Double Coincidence Problem
+
+Barter (as opposed to monetary exchange) requires solving what Jevons (1875) called the **double coincidence of wants**: a trade can only occur between two agents if each has what the other wants. In BarterBench, this manifests in two ways:
+
+1. **Direct coincidence failure**: Agent A has wheat and wants gold, but the gold holder wants tools, not wheat. No direct trade is possible.
+2. **Multi-hop reasoning**: Agent A must first trade wheat for tools (with a tools-seeker), then trade tools for gold. This requires planning 2+ steps ahead.
+
+Stronger models should identify these indirect trade paths more reliably.
+
+### 2.4 Action Space
+
+Each turn, an agent observes its current inventory, target, the open order book, and recent trade history. It selects one of three actions:
+
+| Action | Description | Precondition |
+|---|---|---|
+| `post_offer(give, want)` | Post an offer to the order book | Agent holds all items in `give` |
+| `accept_offer(id)` | Accept an open offer, executing the trade | Agent holds all items the offer requests |
+| `pass_turn` | Take no action this turn | — |
+
+Trades execute **atomically**: when an offer is accepted, both inventories update immediately. Stale offers (where the poster no longer holds the offered items) are automatically removed.
+
+### 2.5 Turn Structure
+
+Each round proceeds as follows:
+
+1. Agent turn order is **randomized** (mitigating first-mover advantage)
+2. Each agent observes the current state and selects an action
+3. Valid actions execute immediately; invalid actions are logged but have no effect
+4. After all agents act, stale offers are pruned
+5. If all agents have reached their goals, the game ends early
+
+## 3. Scenarios
+
+BarterBench ships with three scenarios of increasing complexity. Each is designed around a specific scarcity structure that tests different capabilities.
+
+### 3.1 Gold Rush — Speed and Competitive Bidding
 
 ```
-barter_eval/
-├── agent.py          # Claude API/CLI wrapper with tool_use
-├── engine.py         # Bartering session engine
-├── scoring.py        # Metrics: surplus, Pareto efficiency, fairness
-├── eval.py           # CLI entry point
-├── dashboard.html    # Combined dashboard + replay viewer
-├── program.md        # Outer loop agent instructions
-├── results.json      # Eval results (auto-generated)
-└── scenarios/
-    ├── fruit_trade.json       # Easy: complementary fruit valuations
-    ├── resource_scarcity.json # Medium: unequal endowments
-    ├── hidden_gem.json        # Hard: extreme info asymmetry
-    └── complex_market.json    # Expert: 6 items, complex planning
+Agents: 6 | Items: 3 (wheat, tools, gold) | Rounds: 8
+Scarcity: Gold — supply 6, demand 12 (ratio 0.50)
 ```
 
-## Scenarios
+**Setup.** Six agents in three pairs, each pair starting with a single commodity:
 
-| Scenario | Items | Difficulty | What it tests |
-|---|---|---|---|
-| fruit_trade | 3 | Easy | Basic trading, value recognition |
-| resource_scarcity | 3 | Medium | Negotiation under asymmetry |
-| hidden_gem | 3 | Hard | Strategic deception, info hiding |
-| complex_market | 6 | Expert | Multi-step planning, optimization |
+| Agents | Start | Goal |
+|---|---|---|
+| Trader 0, 1 | wheat ×5 | gold ×3, tools ×2 |
+| Trader 2, 3 | tools ×5 | gold ×3, wheat ×2 |
+| Trader 4, 5 | gold ×3 | wheat ×2, tools ×1 |
 
-## Metrics
+**Trade dynamics.** Traders 4–5 hold all the gold and have enormous leverage — everyone else needs gold, but the gold holders only need 4 wheat and 2 tools total. The gold holders can fully liquidate (trading all 6 gold away), but total gold demand is 12, so **at most half the non-gold agents' gold targets can be met.**
+
+```
+Trade flow:
+
+  Wheat holders (0,1)  ──wheat──▶  Gold holders (4,5)  ◀──tools──  Tool holders (2,3)
+                        ◀──gold──                       ──gold──▶
+```
+
+**What it tests.** Speed of execution (8-round limit is tight), recognizing which trades to prioritize, and competitive bidding — wheat and tool holders compete for the same scarce gold supply.
+
+### 3.2 Water Crisis — Extreme Scarcity Bargaining
+
+```
+Agents: 8 | Items: 4 (wheat, wood, stone, water) | Rounds: 10
+Scarcity: Water — supply 8, demand 18 (ratio 0.44)
+```
+
+**Setup.** Eight agents where six desperately need water but only two hold it:
+
+| Agents | Start | Goal |
+|---|---|---|
+| Trader 0 | wheat ×5 | wood ×2, water ×3 |
+| Trader 1 | wheat ×5 | stone ×2, water ×3 |
+| Trader 2 | wood ×5 | wheat ×2, water ×3 |
+| Trader 3 | wood ×5 | stone ×2, water ×3 |
+| Trader 4 | stone ×5 | wheat ×2, water ×3 |
+| Trader 5 | stone ×5 | wood ×2, water ×3 |
+| Trader 6 | water ×4 | wheat ×2, wood ×2 |
+| Trader 7 | water ×4 | stone ×2, wood ×2 |
+
+**Trade dynamics.** The water holders (6, 7) control 8 units of water, but 6 agents each want 3 = 18 units demanded. Only 44% of water demand can be satisfied. Meanwhile, a **circular dependency** exists among the non-water items:
+
+```
+                    wheat
+                   ╱     ╲
+                  ▼       ▼
+               wood ◀───▶ stone
+                  ╲       ╱
+                   ╲     ╱
+                    ▼   ▼
+                    water
+              (extreme scarcity)
+```
+
+Water holders need wheat, wood, and stone — so non-water agents must first trade among themselves to acquire what the water holders want, *then* negotiate for water. This creates a two-phase dynamic:
+
+1. **Phase 1**: Non-water agents trade wheat↔wood↔stone to acquire bargaining chips
+2. **Phase 2**: Agents compete to exchange their goods for scarce water
+
+**What it tests.** Recognizing leverage asymmetry (water holders have dominant position), strategic sequencing (acquire bargaining chips before approaching water holders), and bargaining under extreme scarcity where most agents will fall short.
+
+### 3.3 Spice Wars — Multi-Hop Reasoning and Dual Scarcity
+
+```
+Agents: 10 | Items: 5 (silk, spice, gold, gems, tea) | Rounds: 12
+Scarcity: Gold — supply 10, demand 13 (ratio 0.77)
+          Gems — supply 10, demand 14 (ratio 0.71)
+```
+
+**Setup.** Ten agents across five commodity groups, with two simultaneously scarce items:
+
+| Agents | Start | Goal |
+|---|---|---|
+| Trader 0 | silk ×5 | gold ×3, tea ×2 |
+| Trader 1 | silk ×5 | gems ×3, spice ×2 |
+| Trader 2 | spice ×5 | gold ×3, silk ×2 |
+| Trader 3 | spice ×5 | gems ×3, tea ×2 |
+| Trader 4 | gold ×5 | silk ×3, gems ×2 |
+| Trader 5 | gold ×5 | spice ×2, gems ×3 |
+| Trader 6 | gems ×5 | tea ×3, gold ×2 |
+| Trader 7 | gems ×5 | spice ×3, gold ×2 |
+| Trader 8 | tea ×5 | gold ×3, silk ×2 |
+| Trader 9 | tea ×5 | gems ×3, spice ×2 |
+
+**Trade dynamics.** This scenario creates a **dense dependency web** with no simple bilateral solutions. Consider Trader 0 (has silk, wants gold + tea):
+
+- Gold holders (4, 5) don't want silk — they want gems
+- Tea holders (8, 9) don't want silk either — they want gold and gems
+- So Trader 0 must execute a **multi-hop chain**: silk → spice → (something gold holders want) → gold
+
+The longest required trade chains can reach 3–4 hops. Simultaneously, gold and gems are both scarce, creating **competition on two fronts** — agents who need gold compete with agents who need gems, and some agents need both.
+
+```
+   silk ──────────▶ spice
+    ▲ ╲              ╱ ▲
+    │  ╲            ╱  │
+    │   ▼          ▼   │
+    │   gold ◀──▶ gems │
+    │   (scarce)  (scarce)
+    │        ╲  ╱      │
+    │         ▼▼       │
+    └────── tea ───────┘
+```
+
+**What it tests.** Multi-hop trade planning (reasoning 3+ steps ahead), dual scarcity management (prioritizing which scarce item to pursue), and operating in a complex marketplace where direct trades are rarely possible — the classic Jevons double coincidence problem at scale.
+
+## 4. Scoring
+
+### 4.1 Goal Completion
+
+For each agent *a* with target inventory *O(a)* and final inventory *F(a)*:
+
+```
+GoalCompletion(a) = (1/|O(a)|) × Σ_i min(F(a,i) / O(a,i), 1.0)
+```
+
+This is the average fractional completion across all target items, capped at 1.0 (no bonus for overshooting). An agent who acquires 2 of a needed 3 gold scores 0.67 on that item.
+
+### 4.2 Model Score
+
+A model's score in a run is the average goal completion across all agents assigned to that model:
+
+```
+ModelScore(m) = (1/|A_m|) × Σ_{a ∈ A_m} GoalCompletion(a)
+```
+
+where *A_m* is the set of agents assigned to model *m*.
+
+### 4.3 Match Outcome
+
+Each run is a **match** between two models. The model with higher ModelScore wins. A draw is declared if the difference is less than 2 percentage points (to avoid noise-driven outcomes):
+
+```
+Winner = m_A   if ModelScore(m_A) - ModelScore(m_B) ≥ 0.02
+         m_B   if ModelScore(m_B) - ModelScore(m_A) ≥ 0.02
+         draw  otherwise
+```
+
+### 4.4 Scarce Item Capture
+
+For scenarios with scarcity metadata, we additionally track how much of each scarce item each model's agents secured in their final inventories. This measures a model's ability to capture contested resources — the key discriminating factor in competitive settings.
+
+### 4.5 Additional Metrics
 
 | Metric | Description |
 |---|---|
-| **Barter Score** | Composite (0-1): 40% Pareto + 30% deal rate + 20% fairness + 10% validity |
-| **Pareto Efficiency** | Fraction of maximum possible surplus captured |
-| **Total Surplus** | Combined value gained by both agents |
-| **Deal Rate** | Whether any trades completed |
-| **Fairness (Gini)** | How evenly surplus was split |
-| **Invalid Rate** | Proportion of invalid trade proposals |
+| **Invalid Rate** | Fraction of non-pass actions that were invalid (offering items not held, accepting non-existent offers) |
+| **Pass Rate** | Fraction of total turns spent passing |
+| **Trades per Round** | Average number of executed trades per round |
 
-## How it works
+## 5. ELO Rating System
 
-1. Each agent gets a system prompt with their private inventory and valuations
-2. Agents alternate turns, using structured actions: `propose_trade`, `accept_trade`, `reject_trade`, `end_negotiation`
-3. The engine validates trades, updates inventories, and tracks history
-4. After the session ends, scoring computes all metrics
-5. Results are saved to `results.json` and displayed on the dashboard
+BarterBench uses the Elo rating system (Elo, 1978) for pairwise model comparison, following the approach popularized by Chatbot Arena (Chiang et al., 2024) for LLM evaluation.
 
-## Auth
+### 5.1 Rating Updates
+
+All models start at rating 1500. After each match, ratings update using:
+
+```
+E_A = 1 / (1 + 10^((R_B - R_A) / 400))
+R_A' = R_A + K × (S_A - E_A)
+```
+
+where *E_A* is the expected score, *S_A* ∈ {0, 0.5, 1} is the actual outcome, and *K* = 32.
+
+### 5.2 Match Structure
+
+Each match proceeds as follows:
+
+1. Select a scenario
+2. Split agents 50/50 between two models (e.g., 6 agents → 3 haiku + 3 opus)
+3. **Randomly assign** models to agent slots (eliminates positional bias)
+4. Run the marketplace for the scenario's fixed number of rounds
+5. Compare average goal completion → determine winner
+6. Update ELO ratings
+
+### 5.3 Tournament Protocol
+
+A full tournament runs both models across all three scenarios, multiple times each:
+
+```
+Round 1:  gold_rush    → model_A:3 vs model_B:3   → B wins  → ELO: A=1484 B=1516
+Round 2:  water_crisis → model_A:4 vs model_B:4   → A wins  → ELO: A=1499 B=1501
+Round 3:  spice_wars   → model_A:5 vs model_B:5   → B wins  → ELO: A=1484 B=1516
+Round 4:  gold_rush    → model_A:3 vs model_B:3   → B wins  → ELO: A=1470 B=1530
+...
+```
+
+Ratings converge after approximately 15–20 matches.
+
+### 5.4 Introducing New Models
+
+A key property of Elo ratings: **new models can be added at any time** without invalidating existing ratings. To benchmark a new model:
+
+1. Run it against one or more already-rated models across all scenarios
+2. After ~15–20 matches, its rating stabilizes
+3. No existing data needs to be re-run
+
+This supports incremental evaluation of prompted variants, fine-tuned models, different reasoning strategies, or entirely different LLM providers.
+
+## 6. Quick Start
+
+```bash
+# Single match
+python3 -m barter_eval --eval gold_rush --models haiku:3,opus:3
+
+# Full tournament (all scenarios, 3 runs each)
+python3 -m barter_eval --eval all --models haiku,opus --runs 3
+
+# View ELO ratings
+python3 -m barter_eval --elo
+
+# List scenarios
+python3 -m barter_eval --list
+
+# Interactive dashboard with replay viewer
+python3 -m barter_eval --serve
+
+# Fresh start
+python3 -m barter_eval --eval all --models haiku,opus --runs 3 --clear
+```
+
+## 7. Architecture
+
+```
+barter_eval/
+├── agent.py          # LLM agent wrapper (API + CLI backends)
+├── engine.py         # N-agent marketplace engine with order book
+├── scoring.py        # Goal completion, scarce item capture
+├── elo.py            # ELO rating computation + persistence
+├── eval.py           # CLI entry point, tournament orchestration
+├── dashboard.html    # Dashboard: ELO leaderboard + trade replay viewer
+├── elo_ratings.json  # Current ELO ratings (auto-generated)
+├── match_log.json    # Match history with ELO deltas (auto-generated)
+├── results.json      # Full run data (auto-generated)
+├── runs/             # Individual run files
+└── scenarios/        # Scenario definitions (JSON)
+```
+
+### Adding new models
+
+Add the model to `MODEL_MAP` in `agent.py`, then run it against existing models. Supports any LLM with a chat completion or tool-use API — different providers, prompted variants, fine-tuned models, agent frameworks with custom reasoning strategies.
+
+### Auth
+
+Currently ships with an Anthropic backend:
 
 - **With API key**: Set `ANTHROPIC_API_KEY` — uses the Anthropic SDK with tool_use
-- **With Claude Code OAuth**: No API key needed — falls back to `claude` CLI
+- **Without API key**: Falls back to `claude` CLI (OAuth)
 
-## The outer loop
-
-Like autoresearch, this is designed for autonomous iteration. A Claude Code agent can:
-
-1. Analyze current eval results
-2. Hypothesize improvements (new scenarios, better scoring, prompt changes)
-3. Modify the eval code
-4. Run evals and measure discriminability between models
-5. Keep changes that improve the eval, discard the rest
-
-See `program.md` for the full outer loop instructions.
-
-## First results (haiku vs opus)
-
-```
-Model       Score    Pareto   Deal%   Key finding
-opus        0.773    0.648    100%    Better strategic planning
-haiku       0.744    0.616    100%    More agreeable, less optimal
-```
-
-Biggest gap on `hidden_gem` scenario: opus achieves 88% Pareto vs haiku's 40% when information asymmetry matters most.
+Extend `agent.py` to add OpenAI, Gemini, or other backends.

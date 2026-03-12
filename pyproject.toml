@@ -1,7 +1,7 @@
 [project]
 name = "barterbench"
-version = "0.1.0"
-description = "Benchmark for evaluating LLM bartering capabilities"
+version = "1.0.0"
+description = "Competitive marketplace benchmark for AI agents with ELO ratings"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [

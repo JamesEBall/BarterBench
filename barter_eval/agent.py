@@ -1,4 +1,4 @@
-"""Agent wrapper — supports both Anthropic API (with key) and claude CLI (OAuth)."""
+"""Agent wrapper for marketplace — supports Anthropic API (with key) and claude CLI (OAuth)."""
 
 import json
 import os
@@ -12,167 +12,161 @@ MODEL_MAP = {
     "opus": "claude-opus-4-6",
 }
 
-# CLI model names (what `claude --model` expects)
 CLI_MODEL_MAP = {
     "haiku": "haiku",
     "sonnet": "sonnet",
     "opus": "opus",
 }
 
-VALID_ACTIONS = {"propose_trade", "accept_trade", "reject_trade", "end_negotiation"}
+VALID_ACTIONS = {"post_offer", "accept_offer", "pass_turn"}
 
 JSON_SCHEMA_INSTRUCTION = """
 Respond with ONLY a JSON object (no other text) in this exact format:
 
-For proposing a trade:
-{"action": "propose_trade", "give": {"item": qty, ...}, "receive": {"item": qty, ...}, "message": "your message"}
+To post a new offer on the order book:
+{"action": "post_offer", "give": {"item": qty, ...}, "want": {"item": qty, ...}, "message": "your message"}
 
-For accepting a pending trade:
-{"action": "accept_trade", "message": "your message"}
+To accept an existing offer from the order book (use the offer_id):
+{"action": "accept_offer", "offer_id": 123, "message": "your message"}
 
-For rejecting a pending trade:
-{"action": "reject_trade", "message": "your message"}
-
-For ending negotiation:
-{"action": "end_negotiation", "message": "your message"}
+To pass your turn (do nothing this round):
+{"action": "pass_turn", "message": "your message"}
 """.strip()
 
-BARTER_TOOLS = [
+MARKETPLACE_TOOLS = [
     {
-        "name": "propose_trade",
-        "description": "Propose a trade to the other trader.",
+        "name": "post_offer",
+        "description": "Post a new offer on the marketplace order book. Other traders can see and accept it.",
         "input_schema": {
             "type": "object",
             "properties": {
                 "give": {"type": "object", "description": "Items you offer to give, e.g. {\"apples\": 2}"},
-                "receive": {"type": "object", "description": "Items you want in return, e.g. {\"oranges\": 3}"},
-                "message": {"type": "string", "description": "Message to the other trader"},
+                "want": {"type": "object", "description": "Items you want in return, e.g. {\"oranges\": 3}"},
+                "message": {"type": "string", "description": "Public message to other traders"},
             },
-            "required": ["give", "receive", "message"],
+            "required": ["give", "want", "message"],
         },
     },
     {
-        "name": "accept_trade",
-        "description": "Accept the current pending trade proposal.",
+        "name": "accept_offer",
+        "description": "Accept an existing offer from the order book. The trade executes immediately.",
         "input_schema": {
             "type": "object",
-            "properties": {"message": {"type": "string", "description": "Message to the other trader"}},
-            "required": ["message"],
+            "properties": {
+                "offer_id": {"type": "integer", "description": "The ID of the offer to accept"},
+                "message": {"type": "string", "description": "Public message to other traders"},
+            },
+            "required": ["offer_id", "message"],
         },
     },
     {
-        "name": "reject_trade",
-        "description": "Reject the current pending trade proposal.",
+        "name": "pass_turn",
+        "description": "Pass your turn without taking any action this round.",
         "input_schema": {
             "type": "object",
-            "properties": {"message": {"type": "string", "description": "Reason for rejection"}},
-            "required": ["message"],
-        },
-    },
-    {
-        "name": "end_negotiation",
-        "description": "End the negotiation. No more trades after this.",
-        "input_schema": {
-            "type": "object",
-            "properties": {"message": {"type": "string", "description": "Final message"}},
+            "properties": {
+                "message": {"type": "string", "description": "Optional message"},
+            },
             "required": ["message"],
         },
     },
 ]
 
 
-def _build_context(role, inventory, valuations, history, pending_trade):
-    current_value = sum(qty * valuations.get(item, 0) for item, qty in inventory.items())
+def _build_marketplace_context(agent_idx, inventory, target, order_book, recent_trades, round_num, max_rounds):
+    """Build the system prompt for a marketplace agent."""
+    # Goal completion so far
+    completion_parts = []
+    for item, needed in target.items():
+        if needed > 0:
+            have = inventory.get(item, 0)
+            pct = min(have / needed, 1.0) * 100
+            completion_parts.append(f"{item}: {have}/{needed} ({pct:.0f}%)")
 
     lines = [
-        f"You are {role} in a multi-round bartering negotiation.",
+        f"You are Trader {agent_idx} in a competitive multi-agent marketplace.",
+        f"Round {round_num + 1} of {max_rounds}.",
         "",
-        "## Your Private Information (DO NOT reveal exact numbers)",
-        f"- Your inventory: {json.dumps(inventory)}",
-        f"- Your valuations per item: {json.dumps(valuations)}",
-        f"- Your current portfolio value: {current_value}",
+        "## Your Goal",
+        "Acquire items to match your TARGET inventory. You are competing against other traders —",
+        "some items are SCARCE (demand exceeds supply), so not everyone can reach their goal.",
+        "Trade aggressively to secure what you need before others do.",
         "",
-        "## Rules",
-        "1. Propose trades, accept/reject proposals, or end the negotiation",
-        "2. You can only offer items you currently have (quantity > 0)",
-        "3. Your valuations are PRIVATE — be strategic about what you reveal",
-        "4. Your goal: MAXIMIZE your total portfolio value through smart trades",
-        "5. A trade only executes when both parties agree",
-        "6. Think carefully about what the other trader might value",
+        f"Your current inventory: {json.dumps(inventory)}",
+        f"Your target inventory:  {json.dumps(target)}",
+        f"Goal progress: {', '.join(completion_parts) if completion_parts else 'No targets'}",
     ]
 
-    if history:
-        lines.append("")
-        lines.append("## Negotiation History")
-        for entry in history:
-            role_name = entry["role"]
-            action = entry["action"]
-            msg = entry.get("message", "")
-            if action == "propose_trade":
-                give = entry.get("give", {})
-                receive = entry.get("receive", {})
-                invalid = " [INVALID - items not available]" if entry.get("invalid") else ""
-                lines.append(f"  {role_name}: \"{msg}\"")
-                lines.append(f"    → Proposed: give {json.dumps(give)}, want {json.dumps(receive)}{invalid}")
-            elif action == "accept_trade":
-                lines.append(f"  {role_name}: \"{msg}\"")
-                lines.append(f"    → ACCEPTED the trade (inventories updated)")
-            elif action == "reject_trade":
-                lines.append(f"  {role_name}: \"{msg}\"")
-                lines.append(f"    → REJECTED the trade")
-            elif action == "end_negotiation":
-                lines.append(f"  {role_name}: \"{msg}\"")
-                lines.append(f"    → Ended negotiation")
+    lines.extend([
+        "",
+        "## Rules",
+        "1. You can POST an offer (give items you have, request items you need)",
+        "2. You can ACCEPT an existing offer from the order book",
+        "3. You can PASS if no good trades are available",
+        "4. Trades execute immediately when accepted — both inventories update",
+        "5. You can only offer items you currently have (quantity > 0)",
+        "6. You cannot accept your own offers",
+        "7. Be strategic: scarce items have leverage — don't give them away cheaply",
+        "8. Think about multi-hop trades: trade what you have for intermediary items to reach your goal",
+    ])
 
-    if pending_trade:
+    if order_book:
         lines.append("")
-        lines.append("## Pending Trade Proposal (awaiting your response)")
-        lines.append(f"  From: {pending_trade['proposer_role']}")
-        lines.append(f"  They give you: {json.dumps(pending_trade['receive'])}")
-        lines.append(f"  They want from you: {json.dumps(pending_trade['give'])}")
-        lines.append("  You may: accept_trade, reject_trade, or propose_trade (counter-offer)")
+        lines.append("## Order Book (open offers you can accept)")
+        for offer in order_book:
+            if offer["poster"] == agent_idx:
+                lines.append(f"  [#{offer['id']}] YOUR OFFER — give {json.dumps(offer['give'])}, want {json.dumps(offer['want'])}")
+            else:
+                lines.append(f"  [#{offer['id']}] Trader {offer['poster']} offers {json.dumps(offer['give'])} for {json.dumps(offer['want'])}")
     else:
         lines.append("")
-        lines.append("## No pending proposal — you may propose_trade or end_negotiation")
+        lines.append("## Order Book: empty — no open offers")
+
+    if recent_trades:
+        lines.append("")
+        lines.append("## Recent Trades")
+        for t in recent_trades[-6:]:
+            lines.append(f"  Round {t['round']}: Trader {t['poster']} traded {json.dumps(t['give'])} ↔ {json.dumps(t['want'])} with Trader {t['accepter']}")
 
     return "\n".join(lines)
 
 
 def _parse_json_response(text):
     """Extract JSON action from model text output."""
-    # Try to find JSON in the response
     json_match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', text)
     if json_match:
         try:
             data = json.loads(json_match.group())
-            action = data.get("action", "end_negotiation")
+            action = data.get("action", "pass_turn")
             if action not in VALID_ACTIONS:
-                action = "end_negotiation"
+                action = "pass_turn"
             return {
                 "action": action,
                 "give": data.get("give", {}),
-                "receive": data.get("receive", {}),
+                "want": data.get("want", {}),
+                "offer_id": data.get("offer_id"),
                 "message": data.get("message", ""),
                 "reasoning": text[:text.find(json_match.group())].strip(),
             }
         except json.JSONDecodeError:
             pass
-    # Fallback: couldn't parse
     return {
-        "action": "end_negotiation",
+        "action": "pass_turn",
         "give": {},
-        "receive": {},
+        "want": {},
+        "offer_id": None,
         "message": "Could not determine action",
         "reasoning": text,
         "parse_error": True,
     }
 
 
-class BarterAgent:
-    """Bartering agent that calls Claude via API or CLI."""
+class MarketAgent:
+    """Marketplace agent that calls Claude via API or CLI."""
 
-    def __init__(self, model_name: str, backend: str = "auto"):
+    def __init__(self, model_name: str, agent_idx: int, backend: str = "auto"):
         self.model_name = model_name
+        self.agent_idx = agent_idx
         self.total_input_tokens = 0
         self.total_output_tokens = 0
 
@@ -188,15 +182,17 @@ class BarterAgent:
         else:
             self.cli_model = CLI_MODEL_MAP.get(model_name, model_name)
 
-    def take_turn(self, role, inventory, valuations, history, pending_trade):
+    def take_turn(self, inventory, target, order_book, recent_trades, round_num, max_rounds):
         if self.backend == "api":
-            return self._turn_api(role, inventory, valuations, history, pending_trade)
+            return self._turn_api(inventory, target, order_book, recent_trades, round_num, max_rounds)
         else:
-            return self._turn_cli(role, inventory, valuations, history, pending_trade)
+            return self._turn_cli(inventory, target, order_book, recent_trades, round_num, max_rounds)
 
-    def _turn_api(self, role, inventory, valuations, history, pending_trade):
+    def _turn_api(self, inventory, target, order_book, recent_trades, round_num, max_rounds):
         import anthropic
-        context = _build_context(role, inventory, valuations, history, pending_trade)
+        context = _build_marketplace_context(
+            self.agent_idx, inventory, target, order_book, recent_trades, round_num, max_rounds,
+        )
 
         for attempt in range(3):
             try:
@@ -205,7 +201,7 @@ class BarterAgent:
                     max_tokens=512,
                     system=context,
                     messages=[{"role": "user", "content": "It's your turn. Choose your action."}],
-                    tools=BARTER_TOOLS,
+                    tools=MARKETPLACE_TOOLS,
                     tool_choice={"type": "any"},
                 )
                 break
@@ -219,7 +215,7 @@ class BarterAgent:
         self.total_output_tokens += response.usage.output_tokens
 
         reasoning = ""
-        tool_name = "end_negotiation"
+        tool_name = "pass_turn"
         tool_input = {"message": ""}
 
         for block in response.content:
@@ -232,13 +228,16 @@ class BarterAgent:
         return {
             "action": tool_name,
             "give": tool_input.get("give", {}),
-            "receive": tool_input.get("receive", {}),
+            "want": tool_input.get("want", {}),
+            "offer_id": tool_input.get("offer_id"),
             "message": tool_input.get("message", ""),
             "reasoning": reasoning,
         }
 
-    def _turn_cli(self, role, inventory, valuations, history, pending_trade):
-        context = _build_context(role, inventory, valuations, history, pending_trade)
+    def _turn_cli(self, inventory, target, order_book, recent_trades, round_num, max_rounds):
+        context = _build_marketplace_context(
+            self.agent_idx, inventory, target, order_book, recent_trades, round_num, max_rounds,
+        )
         prompt = f"{context}\n\n{JSON_SCHEMA_INSTRUCTION}\n\nIt's your turn. Choose your action."
 
         for attempt in range(3):
@@ -262,9 +261,10 @@ class BarterAgent:
                     break
 
         return {
-            "action": "end_negotiation",
+            "action": "pass_turn",
             "give": {},
-            "receive": {},
+            "want": {},
+            "offer_id": None,
             "message": "Agent failed to respond",
             "reasoning": "",
         }

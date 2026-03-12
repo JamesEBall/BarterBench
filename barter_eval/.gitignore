@@ -1,0 +1,12 @@
+# Generated data
+results.json
+elo_ratings.json
+match_log.json
+runs/
+
+# Python
+__pycache__/
+*.pyc
+
+# macOS
+.DS_Store

@@ -1,5 +1,18 @@
+# Python
 __pycache__/
 *.pyc
+*.egg-info/
+dist/
+build/
 .venv/
 .env
+
+# Generated data
+barter_eval/results.json
+barter_eval/elo_ratings.json
+barter_eval/match_log.json
+barter_eval/runs/
 uv.lock
+
+# macOS
+.DS_Store

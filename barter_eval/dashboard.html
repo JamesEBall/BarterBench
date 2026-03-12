@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Barter Eval</title>
+<title>BarterBench</title>
 <style>
 :root {
   --bg: #0a0a0a;
@@ -40,7 +40,6 @@ body {
   padding: 2rem 2.5rem;
 }
 
-/* Header */
 .header {
   display: flex;
   align-items: baseline;
@@ -67,7 +66,6 @@ body {
   margin-bottom: 1.75rem;
 }
 
-/* Tabs */
 .tabs {
   display: flex;
   gap: 0;
@@ -86,9 +84,7 @@ body {
   letter-spacing: 0.02em;
 }
 .tab:hover { color: var(--text); }
-.tab.active {
-  color: var(--text);
-}
+.tab.active { color: var(--text); }
 .tab.active::after {
   content: '';
   position: absolute;
@@ -101,7 +97,6 @@ body {
 .tab-content { display: none; }
 .tab-content.active { display: block; }
 
-/* Cards */
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -119,7 +114,6 @@ body {
   margin-bottom: 0.75rem;
 }
 
-/* Filters */
 .filters {
   display: flex;
   gap: 0.35rem;
@@ -144,11 +138,9 @@ body {
   border-color: var(--text);
 }
 
-/* Chart */
 svg { width: 100%; display: block; }
 svg text { font-family: var(--mono); }
 
-/* Tables */
 table {
   width: 100%;
   border-collapse: collapse;
@@ -182,7 +174,6 @@ tr.clickable:hover td { background: #1e1e1e; }
   font-size: 0.7rem;
 }
 
-/* Stats row */
 .stats-row {
   display: flex;
   gap: 1rem;
@@ -209,7 +200,7 @@ tr.clickable:hover td { background: #1e1e1e; }
   margin-top: 0.15rem;
 }
 
-/* Replay: Arena */
+/* Replay */
 .arena {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -217,114 +208,153 @@ tr.clickable:hover td { background: #1e1e1e; }
   padding: 1.25rem 1.5rem;
   margin-bottom: 1rem;
 }
-.traders {
-  display: flex;
-  justify-content: space-between;
+
+.agents-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 0.75rem;
   margin-bottom: 1.25rem;
 }
-.trader {
+.agent-card {
   text-align: center;
-  width: 44%;
+  padding: 0.6rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
 }
-.sprite {
-  width: 64px;
-  height: 64px;
+.agent-card .sprite {
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
-  margin: 0 auto 0.4rem;
+  margin: 0 auto 0.3rem;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.75rem;
+  font-size: 1.25rem;
   border: 2px solid var(--border);
 }
-.sprite-a { background: rgba(96,165,250,0.1); border-color: rgba(96,165,250,0.3); }
-.sprite-b { background: rgba(167,139,250,0.1); border-color: rgba(167,139,250,0.3); }
-.trader-name {
+.agent-card .agent-name {
   font-weight: 600;
-  font-size: 0.8rem;
-  margin-bottom: 0.15rem;
+  font-size: 0.7rem;
+  margin-bottom: 0.1rem;
 }
-.trader-model {
+.agent-card .agent-model {
   font-family: var(--mono);
-  font-size: 0.65rem;
+  font-size: 0.6rem;
   color: var(--text2);
-  margin-bottom: 0.4rem;
+  margin-bottom: 0.3rem;
+}
+.goal-bar {
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-bottom: 0.2rem;
+}
+.goal-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.3s;
+}
+.goal-pct {
+  font-family: var(--mono);
+  font-size: 0.55rem;
+  color: var(--text3);
 }
 .inventory {
   display: flex;
-  gap: 0.3rem;
+  gap: 0.2rem;
   justify-content: center;
   flex-wrap: wrap;
+  margin-top: 0.25rem;
 }
 .inv-item {
   font-family: var(--mono);
-  font-size: 0.65rem;
-  padding: 0.1rem 0.4rem;
-  border-radius: 4px;
-  background: var(--surface2);
+  font-size: 0.55rem;
+  padding: 0.05rem 0.3rem;
+  border-radius: 3px;
+  background: var(--surface);
   border: 1px solid var(--border);
   white-space: nowrap;
   color: var(--text2);
 }
 
-/* Conversation */
-.conversation {
-  max-height: 480px;
+.order-book {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  max-height: 200px;
+  overflow-y: auto;
+}
+.ob-label {
+  font-family: var(--mono);
+  font-size: 0.6rem;
+  color: var(--text3);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 0.4rem;
+}
+.ob-entry {
+  font-family: var(--mono);
+  font-size: 0.65rem;
+  color: var(--text2);
+  padding: 0.2rem 0;
+  border-bottom: 1px solid var(--border-light);
+}
+.ob-entry:last-child { border-bottom: none; }
+
+.event-log {
+  max-height: 400px;
   overflow-y: auto;
   padding: 0.5rem 0;
   scrollbar-width: thin;
   scrollbar-color: var(--border) transparent;
 }
-.turn {
+.event {
   display: flex;
-  margin-bottom: 0.6rem;
+  gap: 0.5rem;
+  padding: 0.35rem 0.5rem;
+  margin-bottom: 0.3rem;
+  border-radius: 6px;
+  font-size: 0.75rem;
   opacity: 0;
   animation: fadeIn 0.25s forwards;
 }
 @keyframes fadeIn { to { opacity: 1; } }
-.turn.left { justify-content: flex-start; }
-.turn.right { justify-content: flex-end; }
-.bubble {
-  max-width: 72%;
-  padding: 0.55rem 0.85rem;
-  border-radius: 10px;
-  font-size: 0.8rem;
-  font-family: var(--sans);
+.event .ev-round {
+  font-family: var(--mono);
+  font-size: 0.6rem;
+  color: var(--text3);
+  white-space: nowrap;
+  min-width: 2.5rem;
 }
-.turn.left .bubble {
-  background: rgba(96,165,250,0.08);
-  border: 1px solid rgba(96,165,250,0.15);
-  border-bottom-left-radius: 3px;
+.event .ev-agent {
+  font-family: var(--mono);
+  font-size: 0.65rem;
+  font-weight: 600;
+  white-space: nowrap;
+  min-width: 5rem;
 }
-.turn.right .bubble {
-  background: rgba(167,139,250,0.08);
-  border: 1px solid rgba(167,139,250,0.15);
-  border-bottom-right-radius: 3px;
-}
-.action-tag {
+.event .ev-action {
   font-family: var(--mono);
   font-size: 0.6rem;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
-  margin-bottom: 0.2rem;
+  white-space: nowrap;
+  min-width: 4.5rem;
 }
-.action-propose { color: var(--blue); }
-.action-accept { color: var(--green); }
-.action-reject { color: var(--red); }
-.action-end { color: var(--text3); }
-.msg { font-size: 0.8rem; color: var(--text); }
-.trade-detail {
-  font-family: var(--mono);
-  font-size: 0.65rem;
-  margin-top: 0.3rem;
-  padding: 0.25rem 0.45rem;
-  background: rgba(255,255,255,0.03);
-  border-radius: 5px;
+.event .ev-detail {
+  font-size: 0.75rem;
   color: var(--text2);
+  flex: 1;
 }
+.ev-post { color: var(--blue); }
+.ev-accept { color: var(--green); }
+.ev-pass { color: var(--text3); }
+.ev-invalid { color: var(--red); }
 
-/* Controls */
 .controls {
   display: flex;
   align-items: center;
@@ -350,7 +380,6 @@ tr.clickable:hover td { background: #1e1e1e; }
   margin-left: auto;
 }
 
-/* Summary bar */
 .summary-bar {
   display: flex;
   gap: 1.5rem;
@@ -380,7 +409,6 @@ tr.clickable:hover td { background: #1e1e1e; }
   font-size: 0.8rem;
 }
 
-/* Run selector in replay */
 .run-list {
   display: flex;
   gap: 0.35rem;
@@ -393,10 +421,10 @@ tr.clickable:hover td { background: #1e1e1e; }
 <div class="container">
 
 <div class="header">
-  <h1>barter eval</h1>
-  <span class="version">v0.1</span>
+  <h1>BarterBench</h1>
+  <span class="version">v1.0 elo</span>
 </div>
-<p class="subtitle">evaluating model bartering capabilities</p>
+<p class="subtitle">Competitive marketplace benchmark with ELO ratings</p>
 
 <div class="tabs">
   <button class="tab active" onclick="switchTab('overview')">overview</button>
@@ -409,7 +437,7 @@ tr.clickable:hover td { background: #1e1e1e; }
 <div class="stats-row" id="statsRow"></div>
 
 <div class="card">
-  <div class="card-label">performance over runs</div>
+  <div class="card-label">goal completion over runs</div>
   <div class="filters" id="scenarioFilters"></div>
   <svg id="chart" viewBox="0 0 940 280" preserveAspectRatio="xMidYMid meet"></svg>
 </div>
@@ -440,8 +468,12 @@ tr.clickable:hover td { background: #1e1e1e; }
 </div>
 
 <div class="arena" id="arena">
-  <div class="traders" id="traders"></div>
-  <div class="conversation" id="conversation"></div>
+  <div class="agents-grid" id="agentsGrid"></div>
+  <div class="order-book" id="orderBook">
+    <div class="ob-label">Order Book</div>
+    <div id="obEntries"><span style="color:var(--text3);font-size:0.7rem">empty</span></div>
+  </div>
+  <div class="event-log" id="eventLog"></div>
   <div class="summary-bar" id="summary"></div>
 </div>
 
@@ -454,13 +486,24 @@ const COLORS = { haiku: '#60a5fa', sonnet: '#34d399', opus: '#a78bfa' };
 const ITEM_EMOJI = {
   apples:'\u{1F34E}',oranges:'\u{1F34A}',bananas:'\u{1F34C}',
   gold:'\u{1FA99}',silver:'\u{1F948}',copper:'\u{1F7E4}',
-  widgets:'\u2699\uFE0F',gadgets:'\u{1F527}',gems:'\u{1F48E}',
-  iron:'\u26CF\uFE0F',wood:'\u{1FAB5}',stone:'\u{1FAA8}',grain:'\u{1F33E}',cloth:'\u{1F9F5}',spice:'\u{1F336}\uFE0F',
+  gems:'\u{1F48E}',iron:'\u26CF\uFE0F',wood:'\u{1FAB5}',stone:'\u{1FAA8}',
+  grain:'\u{1F33E}',cloth:'\u{1F9F5}',spice:'\u{1F336}\uFE0F',
+  silk:'\u{1F9F5}',tea:'\u{1F375}',water:'\u{1F4A7}',
+  wheat:'\u{1F33E}',tools:'\u{1F527}',
 };
+const AGENT_EMOJI = [
+  '\u{1F9D1}\u200D\u{1F4BC}','\u{1F469}\u200D\u{1F4BC}','\u{1F468}\u200D\u{1F4BC}',
+  '\u{1F9D1}\u200D\u{1F527}','\u{1F469}\u200D\u{1F527}','\u{1F468}\u200D\u{1F527}',
+  '\u{1F9D1}\u200D\u{1F373}','\u{1F469}\u200D\u{1F373}','\u{1F468}\u200D\u{1F373}',
+  '\u{1F9D1}\u200D\u{1F3A8}',
+];
 function gc(m) { return COLORS[m] || '#6b7280'; }
+function itemStr(items) {
+  return Object.entries(items).filter(([,v])=>v>0).map(([k,v])=>`${ITEM_EMOJI[k]||''} ${v} ${k}`).join(', ') || 'nothing';
+}
 
-let allData = [], activeScenario = 'all';
-let currentRun = null, currentStep = 0, inventories = [null,null], playing = false;
+let allData = [], eloRatings = {}, matchLog = [], activeScenario = 'all';
+let currentRun = null, currentStep = 0, inventories = [], orderBook = [], playing = false;
 
 // ---- Data ----
 async function loadData() {
@@ -468,6 +511,14 @@ async function loadData() {
     const r = await fetch('results.json');
     allData = (await r.json()).filter(d => !d.error);
   } catch { allData = []; }
+  try {
+    const r2 = await fetch('elo_ratings.json');
+    eloRatings = await r2.json();
+  } catch { eloRatings = {}; }
+  try {
+    const r3 = await fetch('match_log.json');
+    matchLog = await r3.json();
+  } catch { matchLog = []; }
   renderOverview();
   buildRunSelector();
 }
@@ -496,14 +547,20 @@ function renderStats() {
   const d = allData;
   const el = document.getElementById('statsRow');
   if (!d.length) { el.innerHTML = ''; return; }
-  const models = new Set([...d.map(x=>x.model_a),...d.map(x=>x.model_b)]);
-  const avgScore = d.reduce((a,x)=>a+(x.barter_score??0),0)/d.length;
-  const avgPareto = d.reduce((a,x)=>a+(x.pareto_efficiency??0),0)/d.length;
+  const models = new Set();
+  d.forEach(r => {
+    const mgc = r.model_goal_completion || {};
+    Object.keys(mgc).forEach(m => models.add(m));
+  });
+  const avgGoal = d.reduce((a,x) => a + (x.avg_goal_completion || 0), 0) / d.length;
+  const avgTrades = d.reduce((a,x) => a + (x.num_trades || 0), 0) / d.length;
+  const topElo = Object.entries(eloRatings).sort((a,b) => b[1]-a[1]);
+  const topEloStr = topElo.length ? `${topElo[0][0]} ${Math.round(topElo[0][1])}` : '--';
   el.innerHTML = `
-    <div class="stat-card"><div class="val">${d.length}</div><div class="lbl">total runs</div></div>
+    <div class="stat-card"><div class="val">${d.length}</div><div class="lbl">matches</div></div>
     <div class="stat-card"><div class="val">${models.size}</div><div class="lbl">models</div></div>
-    <div class="stat-card"><div class="val">${avgScore.toFixed(3)}</div><div class="lbl">avg score</div></div>
-    <div class="stat-card"><div class="val">${(avgPareto*100).toFixed(0)}%</div><div class="lbl">avg pareto</div></div>`;
+    <div class="stat-card"><div class="val">${topEloStr}</div><div class="lbl">top elo</div></div>
+    <div class="stat-card"><div class="val">${(avgGoal*100).toFixed(0)}%</div><div class="lbl">avg goal</div></div>`;
 }
 
 function renderFilters() {
@@ -523,67 +580,117 @@ function renderChart() {
   const data = filtered();
   const svg = document.getElementById('chart');
   svg.innerHTML = '';
-  if (!data.length) { svg.innerHTML = '<text x="470" y="140" text-anchor="middle" fill="#525252" font-size="13">no data yet</text>'; return; }
+  if (!data.length) {
+    svg.innerHTML = '<text x="470" y="140" text-anchor="middle" fill="#525252" font-size="13">no data yet</text>';
+    return;
+  }
 
   const W=940,H=280,p={t:16,r:24,b:36,l:50};
   const pw=W-p.l-p.r, ph=H-p.t-p.b;
-  const yVals=data.map(d=>d.barter_score??0);
-  const yMin=Math.min(...yVals)*0.92, yMax=Math.max(...yVals)*1.08||1;
-  const xS=i=>p.l+(i/Math.max(data.length-1,1))*pw;
-  const yS=v=>p.t+ph-((v-yMin)/(yMax-yMin))*ph;
+  const xS = i => p.l + (i / Math.max(data.length-1, 1)) * pw;
+  const yS = v => p.t + ph - v * ph;
 
+  // Grid
   for(let i=0;i<=4;i++){
-    const y=p.t+(i/4)*ph, v=yMax-(i/4)*(yMax-yMin);
+    const y=p.t+(i/4)*ph, v=1-(i/4);
     svg.innerHTML+=`<line x1="${p.l}" y1="${y}" x2="${W-p.r}" y2="${y}" stroke="#1f1f1f" stroke-width="1"/>`;
     svg.innerHTML+=`<text x="${p.l-6}" y="${y+3}" text-anchor="end" fill="#525252" font-size="9">${v.toFixed(2)}</text>`;
   }
   svg.innerHTML+=`<text x="${p.l+pw/2}" y="${H-4}" text-anchor="middle" fill="#525252" font-size="10">run</text>`;
 
-  let best=-Infinity;
-  const fp=data.map((d,i)=>{best=Math.max(best,d.barter_score??0);return`${xS(i)},${yS(best)}`;});
-  svg.innerHTML+=`<polyline points="${fp.join(' ')}" fill="none" stroke="#404040" stroke-width="1.5" stroke-dasharray="4,4"/>`;
-
-  data.forEach((d,i)=>{
-    const cx=xS(i),cy=yS(d.barter_score??0),c=gc(d.model_a),c2=gc(d.model_b);
-    const t=`${d.scenario}: ${d.model_a} vs ${d.model_b}&#10;score=${(d.barter_score??0).toFixed(3)}`;
-    svg.innerHTML+=`<circle cx="${cx}" cy="${cy}" r="5" fill="${c}" opacity="0.85"><title>${t}</title></circle>`;
-    svg.innerHTML+=`<circle cx="${cx}" cy="${cy}" r="5" fill="none" stroke="${c2}" stroke-width="1.5" opacity="0.5"/>`;
+  // Points — one per model per run
+  data.forEach((d,i) => {
+    const cx = xS(i);
+    const mgc = d.model_goal_completion || {};
+    Object.entries(mgc).forEach(([model, score]) => {
+      const cy = yS(score);
+      const c = gc(model);
+      const t = `${d.scenario}: ${model} = ${(score*100).toFixed(0)}% goal`;
+      svg.innerHTML += `<circle cx="${cx}" cy="${cy}" r="5" fill="${c}" opacity="0.85"><title>${t}</title></circle>`;
+    });
   });
 
-  const models=[...new Set([...allData.map(d=>d.model_a),...allData.map(d=>d.model_b)])];
-  models.forEach((m,i)=>{
-    const lx=p.l+i*80;
-    svg.innerHTML+=`<circle cx="${lx}" cy="${H-20}" r="3.5" fill="${gc(m)}"/>`;
-    svg.innerHTML+=`<text x="${lx+7}" y="${H-17}" fill="#737373" font-size="9">${m}</text>`;
+  // Legend
+  const models = [...new Set(allData.flatMap(d => Object.keys(d.model_goal_completion || {})))];
+  models.forEach((m,i) => {
+    const lx = p.l + i * 80;
+    svg.innerHTML += `<circle cx="${lx}" cy="${H-20}" r="3.5" fill="${gc(m)}"/>`;
+    svg.innerHTML += `<text x="${lx+7}" y="${H-17}" fill="#737373" font-size="9">${m}</text>`;
   });
 }
 
 function renderLeaderboard() {
-  const data=filtered(), el=document.getElementById('leaderboard');
-  if(!data.length){el.innerHTML='<tr><td class="empty-state" colspan="6">no data</td></tr>';return;}
-  const s={};
-  data.forEach(d=>{['model_a','model_b'].forEach((k,idx)=>{
-    const m=d[k];if(!s[m])s[m]={sc:[],su:[],pa:[],de:[],n:0};
-    s[m].sc.push(d.barter_score??0);s[m].su.push(d[`utility_gain_${idx}`]??0);
-    s[m].pa.push(d.pareto_efficiency??0);s[m].de.push(d.deal_rate??0);s[m].n++;
-  });});
-  const avg=a=>a.reduce((x,y)=>x+y,0)/a.length;
-  const rows=Object.entries(s).map(([m,v])=>({m,sc:avg(v.sc),su:avg(v.su),pa:avg(v.pa),de:avg(v.de)*100,n:v.n})).sort((a,b)=>b.sc-a.sc);
-  el.innerHTML=`<thead><tr><th>model</th><th class="r">score</th><th class="r">surplus</th><th class="r">pareto</th><th class="r">deal%</th><th class="r">runs</th></tr></thead>
-  <tbody>${rows.map(r=>`<tr><td><span class="tag" style="background:${gc(r.m)}18;color:${gc(r.m)}">${r.m}</span></td>
-  <td class="r">${r.sc.toFixed(3)}</td><td class="r">${r.su.toFixed(1)}</td><td class="r">${r.pa.toFixed(3)}</td><td class="r">${r.de.toFixed(0)}%</td><td class="r">${r.n}</td></tr>`).join('')}</tbody>`;
+  const data = filtered(), el = document.getElementById('leaderboard');
+  if (!data.length) { el.innerHTML = '<tr><td class="empty-state" colspan="6">no data</td></tr>'; return; }
+
+  const s = {};
+  data.forEach(d => {
+    const mgc = d.model_goal_completion || {};
+    Object.entries(mgc).forEach(([model, score]) => {
+      if (!s[model]) s[model] = { scores: [], trades: [], invalids: [] };
+      s[model].scores.push(score);
+      s[model].trades.push(d.num_trades || 0);
+      s[model].invalids.push(d.invalid_rate || 0);
+    });
+  });
+
+  // Count wins/losses/draws from match log
+  function wld(model) {
+    let w=0, l=0, d=0;
+    matchLog.forEach(m => {
+      if (m.model_a !== model && m.model_b !== model) return;
+      if (m.winner === 'draw') d++;
+      else if (m.winner === model) w++;
+      else l++;
+    });
+    return {w,l,d};
+  }
+
+  const avg = a => a.reduce((x,y) => x+y, 0) / a.length;
+  const rows = Object.entries(s).map(([m,v]) => ({
+    m, elo: eloRatings[m] || 1500, sc: avg(v.scores), tr: avg(v.trades),
+    inv: avg(v.invalids)*100, n: v.scores.length, ...wld(m)
+  })).sort((a,b) => b.elo - a.elo);
+
+  el.innerHTML = `<thead><tr><th>model</th><th class="r">elo</th><th class="r">W-L-D</th><th class="r">goal %</th><th class="r">invalid %</th><th class="r">matches</th></tr></thead>
+  <tbody>${rows.map(r => `<tr>
+    <td><span class="tag" style="background:${gc(r.m)}18;color:${gc(r.m)}">${r.m}</span></td>
+    <td class="r" style="font-weight:600">${Math.round(r.elo)}</td>
+    <td class="r">${r.w}-${r.l}-${r.d}</td>
+    <td class="r">${(r.sc*100).toFixed(1)}%</td>
+    <td class="r">${r.inv.toFixed(1)}%</td>
+    <td class="r">${r.n}</td></tr>`).join('')}</tbody>`;
 }
 
 function renderHistory() {
-  const data=filtered(), el=document.getElementById('history');
-  if(!data.length){el.innerHTML='<tr><td class="empty-state" colspan="8">no data</td></tr>';return;}
-  el.innerHTML=`<thead><tr><th>#</th><th>scenario</th><th>agent a</th><th>agent b</th><th class="r">surplus</th><th class="r">pareto</th><th class="r">trades</th><th class="r">score</th></tr></thead>
-  <tbody>${data.map((d,i)=>`<tr class="clickable" onclick="openReplay(${allData.indexOf(d)})">
-  <td>${d.run_id}</td><td>${d.scenario}</td>
-  <td><span class="tag" style="background:${gc(d.model_a)}18;color:${gc(d.model_a)}">${d.model_a}</span></td>
-  <td><span class="tag" style="background:${gc(d.model_b)}18;color:${gc(d.model_b)}">${d.model_b}</span></td>
-  <td class="r">${(d.total_surplus??0).toFixed(1)}</td><td class="r">${(d.pareto_efficiency??0).toFixed(3)}</td>
-  <td class="r">${d.num_trades??0}</td><td class="r">${(d.barter_score??0).toFixed(3)}</td></tr>`).join('')}</tbody>`;
+  const data = filtered(), el = document.getElementById('history');
+  if (!data.length) { el.innerHTML = '<tr><td class="empty-state" colspan="6">no data</td></tr>'; return; }
+
+  el.innerHTML = `<thead><tr><th>#</th><th>scenario</th><th>result</th><th class="r">goal %</th><th class="r">trades</th><th class="r">time</th></tr></thead>
+  <tbody>${data.map((d,i) => {
+    const mgc = d.model_goal_completion || {};
+    const models = Object.keys(mgc);
+    let resultStr = '';
+    if (models.length === 2) {
+      const [a, b] = models;
+      const sa = mgc[a], sb = mgc[b];
+      const diff = Math.abs(sa - sb);
+      if (diff < 0.02) {
+        resultStr = `<span class="tag" style="background:#fbbf2418;color:#fbbf24">draw</span> `;
+      } else {
+        const winner = sa > sb ? a : b;
+        resultStr = `<span class="tag" style="background:${gc(winner)}18;color:${gc(winner)}">${winner} wins</span> `;
+      }
+    }
+    resultStr += Object.entries(mgc).map(([m,s]) =>
+      `<span class="tag" style="background:${gc(m)}18;color:${gc(m)}">${m}: ${(s*100).toFixed(0)}%</span>`
+    ).join(' ');
+    return `<tr class="clickable" onclick="openReplay(${allData.indexOf(d)})">
+    <td>${d.run_id}</td><td>${d.scenario}</td><td>${resultStr}</td>
+    <td class="r">${((d.avg_goal_completion||0)*100).toFixed(0)}%</td>
+    <td class="r">${d.num_trades||0}</td>
+    <td class="r">${(d.elapsed_seconds||0).toFixed(1)}s</td></tr>`;
+  }).join('')}</tbody>`;
 }
 
 function openReplay(idx) {
@@ -593,134 +700,263 @@ function openReplay(idx) {
 
 // ---- Replays ----
 function buildRunSelector() {
-  const el=document.getElementById('runSelector');
-  el.innerHTML='';
-  allData.filter(d=>d.history&&d.history.length).forEach((run,i)=>{
-    const btn=document.createElement('button');
-    btn.className='filter-btn'+(currentRun===run?' active':'');
-    btn.textContent=`${run.scenario} (${run.model_a} v ${run.model_b})`;
-    btn.onclick=()=>selectRun(i);
+  const el = document.getElementById('runSelector');
+  el.innerHTML = '';
+  const runs = allData.filter(d => d.history && d.history.length);
+  runs.forEach((run, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'filter-btn' + (currentRun === run ? ' active' : '');
+    const models = [...new Set(run.model_assignments || [])].join('/');
+    btn.textContent = `#${run.run_id} ${run.scenario} (${models})`;
+    btn.onclick = () => selectRun(i);
     el.appendChild(btn);
   });
 }
 
 function selectRun(idx) {
-  const runs=allData.filter(d=>d.history&&d.history.length);
-  if(!runs[idx])return;
-  currentRun=runs[idx]; currentStep=0; playing=false;
-  inventories=currentRun.initial_inventories.map(inv=>({...inv}));
+  const runs = allData.filter(d => d.history && d.history.length);
+  if (!runs[idx]) return;
+  currentRun = runs[idx];
+  currentStep = 0;
+  playing = false;
+  inventories = (currentRun.initial_inventories || []).map(inv => ({...inv}));
+  orderBook = [];
   buildRunSelector();
-  renderTraders();
-  document.getElementById('conversation').innerHTML='';
-  updateStep(); renderSummary(false);
+  renderAgents();
+  renderOrderBook();
+  document.getElementById('eventLog').innerHTML = '';
+  updateStep();
+  renderSummary(false);
 }
 
-function renderTraders() {
-  if(!currentRun)return;
-  const el=document.getElementById('traders');
-  el.innerHTML=[0,1].map(i=>{
-    const role=i===0?'Trader A':'Trader B', model=i===0?currentRun.model_a:currentRun.model_b;
-    const sc=i===0?'sprite-a':'sprite-b', em=i===0?'\u{1F9D1}\u200D\u{1F4BC}':'\u{1F469}\u200D\u{1F4BC}';
-    return`<div class="trader"><div class="sprite ${sc}">${em}</div><div class="trader-name">${role}</div>
-    <div class="trader-model">${model}</div><div class="inventory" id="inv-${i}">
-    ${Object.entries(inventories[i]).map(([k,v])=>`<span class="inv-item">${ITEM_EMOJI[k]||''} ${k}:${v}</span>`).join('')}
-    </div></div>`;
-  }).join('');
+function renderAgents() {
+  if (!currentRun) return;
+  const el = document.getElementById('agentsGrid');
+  const n = currentRun.model_assignments ? currentRun.model_assignments.length : 0;
+  const targets = currentRun.targets || [];
+
+  el.innerHTML = '';
+  for (let i = 0; i < n; i++) {
+    const model = currentRun.model_assignments[i];
+    const inv = inventories[i] || {};
+    const target = targets[i] || {};
+    const completion = computeCompletion(inv, target);
+    const color = gc(model);
+    const emoji = AGENT_EMOJI[i % AGENT_EMOJI.length];
+
+    el.innerHTML += `
+      <div class="agent-card" id="agent-card-${i}">
+        <div class="sprite" style="background:${color}11;border-color:${color}44">${emoji}</div>
+        <div class="agent-name">Trader ${i}</div>
+        <div class="agent-model" style="color:${color}">${model}</div>
+        <div class="goal-bar"><div class="goal-fill" id="goal-${i}" style="width:${completion*100}%;background:${color}"></div></div>
+        <div class="goal-pct" id="goalpct-${i}">${(completion*100).toFixed(0)}% goal</div>
+        <div class="inventory" id="inv-${i}">
+          ${Object.entries(inv).filter(([,v])=>v>0).map(([k,v])=>`<span class="inv-item">${ITEM_EMOJI[k]||''} ${k}:${v}</span>`).join('')}
+        </div>
+      </div>`;
+  }
 }
 
-function updateInv() {
-  [0,1].forEach(i=>{
-    const el=document.getElementById(`inv-${i}`);if(!el)return;
-    el.innerHTML=Object.entries(inventories[i]).map(([k,v])=>`<span class="inv-item">${ITEM_EMOJI[k]||''} ${k}:${v}</span>`).join('');
-  });
-}
-
-function applyTrade() {
-  const h=currentRun.history;
-  for(let j=currentStep-1;j>=0;j--){
-    if(h[j].action==='propose_trade'&&!h[j].invalid){
-      const p=h[j].agent,r=1-p,g=h[j].give||{},rc=h[j].receive||{};
-      Object.entries(g).forEach(([k,v])=>{inventories[p][k]=(inventories[p][k]||0)-v;inventories[r][k]=(inventories[r][k]||0)+v;});
-      Object.entries(rc).forEach(([k,v])=>{inventories[r][k]=(inventories[r][k]||0)-v;inventories[p][k]=(inventories[p][k]||0)+v;});
-      break;
+function computeCompletion(inv, target) {
+  if (!target || Object.keys(target).length === 0) return 1;
+  let scores = [];
+  for (const [item, needed] of Object.entries(target)) {
+    if (needed > 0) {
+      scores.push(Math.min((inv[item] || 0) / needed, 1.0));
     }
   }
+  return scores.length ? scores.reduce((a,b)=>a+b,0) / scores.length : 1;
 }
 
-function unapplyTrade(si) {
-  const h=currentRun.history;
-  for(let j=si-1;j>=0;j--){
-    if(h[j].action==='propose_trade'&&!h[j].invalid){
-      const p=h[j].agent,r=1-p,g=h[j].give||{},rc=h[j].receive||{};
-      Object.entries(g).forEach(([k,v])=>{inventories[p][k]=(inventories[p][k]||0)+v;inventories[r][k]=(inventories[r][k]||0)-v;});
-      Object.entries(rc).forEach(([k,v])=>{inventories[r][k]=(inventories[r][k]||0)+v;inventories[p][k]=(inventories[p][k]||0)-v;});
-      break;
+function updateAgents() {
+  if (!currentRun) return;
+  const n = currentRun.model_assignments ? currentRun.model_assignments.length : 0;
+  const targets = currentRun.targets || [];
+
+  for (let i = 0; i < n; i++) {
+    const inv = inventories[i] || {};
+    const target = targets[i] || {};
+    const completion = computeCompletion(inv, target);
+    const model = currentRun.model_assignments[i];
+    const color = gc(model);
+
+    const invEl = document.getElementById(`inv-${i}`);
+    if (invEl) {
+      invEl.innerHTML = Object.entries(inv).filter(([,v])=>v>0)
+        .map(([k,v])=>`<span class="inv-item">${ITEM_EMOJI[k]||''} ${k}:${v}</span>`).join('');
+    }
+    const goalEl = document.getElementById(`goal-${i}`);
+    if (goalEl) goalEl.style.width = `${completion*100}%`;
+    const pctEl = document.getElementById(`goalpct-${i}`);
+    if (pctEl) pctEl.textContent = `${(completion*100).toFixed(0)}% goal`;
+  }
+}
+
+function renderOrderBook() {
+  const el = document.getElementById('obEntries');
+  if (!orderBook.length) {
+    el.innerHTML = '<span style="color:var(--text3);font-size:0.7rem">empty</span>';
+    return;
+  }
+  el.innerHTML = orderBook.map(o =>
+    `<div class="ob-entry">[#${o.id}] Trader ${o.poster} gives ${itemStr(o.give)} for ${itemStr(o.want)}</div>`
+  ).join('');
+}
+
+function renderEvent(h) {
+  const log = document.getElementById('eventLog');
+  const model = currentRun.model_assignments[h.agent];
+  const color = gc(model);
+
+  let actionClass = 'ev-pass';
+  let detail = h.message || '';
+
+  if (h.action === 'post_offer') {
+    actionClass = h.invalid ? 'ev-invalid' : 'ev-post';
+    const inv = h.invalid ? ' [INVALID]' : '';
+    detail = `give ${itemStr(h.give||{})} for ${itemStr(h.want||{})}${inv}`;
+  } else if (h.action === 'accept_offer') {
+    actionClass = h.invalid ? 'ev-invalid' : 'ev-accept';
+    const inv = h.invalid ? ' [INVALID]' : '';
+    detail = `accepted offer #${h.offer_id||'?'}${inv}`;
+    if (h.trade) {
+      detail += ` (${itemStr(h.trade.give||{})} <-> ${itemStr(h.trade.want||{})})`;
     }
   }
+
+  const div = document.createElement('div');
+  div.className = 'event';
+  div.innerHTML = `
+    <span class="ev-round">R${h.round}</span>
+    <span class="ev-agent" style="color:${color}">T${h.agent} ${model}</span>
+    <span class="ev-action ${actionClass}">${h.action.replace(/_/g,' ')}</span>
+    <span class="ev-detail">${detail}</span>`;
+  log.appendChild(div);
+  log.scrollTop = log.scrollHeight;
 }
 
-function renderTurn(t) {
-  const conv=document.getElementById('conversation');
-  const side=t.agent===0?'left':'right';
-  const ac=t.action.includes('propose')?'action-propose':t.action.includes('accept')?'action-accept':t.action.includes('reject')?'action-reject':'action-end';
-  let td='';
-  if(t.action==='propose_trade'){
-    const gs=Object.entries(t.give||{}).map(([k,v])=>`${ITEM_EMOJI[k]||''} ${v} ${k}`).join(', ');
-    const rs=Object.entries(t.receive||{}).map(([k,v])=>`${ITEM_EMOJI[k]||''} ${v} ${k}`).join(', ');
-    td=`<div class="trade-detail">give: ${gs} \u21C4 want: ${rs}</div>`;
-    if(t.invalid) td+=`<div class="trade-detail" style="color:var(--red)">invalid</div>`;
+function applyAction(h) {
+  if (h.action === 'post_offer' && !h.invalid) {
+    orderBook.push({
+      id: h.offer_id,
+      poster: h.agent,
+      give: {...(h.give || {})},
+      want: {...(h.want || {})},
+    });
+  } else if (h.action === 'accept_offer' && !h.invalid && h.trade) {
+    const t = h.trade;
+    // Execute trade on inventories
+    for (const [item, qty] of Object.entries(t.give || {})) {
+      inventories[t.poster][item] = (inventories[t.poster][item] || 0) - qty;
+      inventories[t.accepter][item] = (inventories[t.accepter][item] || 0) + qty;
+    }
+    for (const [item, qty] of Object.entries(t.want || {})) {
+      inventories[t.accepter][item] = (inventories[t.accepter][item] || 0) - qty;
+      inventories[t.poster][item] = (inventories[t.poster][item] || 0) + qty;
+    }
+    // Remove from order book
+    orderBook = orderBook.filter(o => o.id !== h.offer_id);
+    // Remove stale offers
+    orderBook = orderBook.filter(o => {
+      for (const [item, qty] of Object.entries(o.give)) {
+        if ((inventories[o.poster][item] || 0) < qty) return false;
+      }
+      return true;
+    });
   }
-  const div=document.createElement('div');
-  div.className=`turn ${side}`;
-  div.innerHTML=`<div class="bubble"><div class="action-tag ${ac}">${t.action.replace(/_/g,' ')}</div><div class="msg">${t.message||''}</div>${td}</div>`;
-  conv.appendChild(div);
-  conv.scrollTop=conv.scrollHeight;
+}
+
+function unapplyAction(h) {
+  if (h.action === 'post_offer' && !h.invalid) {
+    orderBook = orderBook.filter(o => o.id !== h.offer_id);
+  } else if (h.action === 'accept_offer' && !h.invalid && h.trade) {
+    const t = h.trade;
+    // Reverse trade
+    for (const [item, qty] of Object.entries(t.give || {})) {
+      inventories[t.poster][item] = (inventories[t.poster][item] || 0) + qty;
+      inventories[t.accepter][item] = (inventories[t.accepter][item] || 0) - qty;
+    }
+    for (const [item, qty] of Object.entries(t.want || {})) {
+      inventories[t.accepter][item] = (inventories[t.accepter][item] || 0) + qty;
+      inventories[t.poster][item] = (inventories[t.poster][item] || 0) - qty;
+    }
+    // Re-add to order book
+    orderBook.push({
+      id: h.offer_id,
+      poster: t.poster,
+      give: {...(t.give || {})},
+      want: {...(t.want || {})},
+    });
+  }
 }
 
 function stepForward() {
-  if(!currentRun||currentStep>=currentRun.history.length)return;
-  const t=currentRun.history[currentStep]; currentStep++;
-  if(t.action==='accept_trade'){applyTrade();updateInv();}
-  renderTurn(t); updateStep();
-  if(currentStep>=currentRun.history.length) renderSummary(true);
+  if (!currentRun || currentStep >= currentRun.history.length) return;
+  const h = currentRun.history[currentStep];
+  currentStep++;
+  applyAction(h);
+  updateAgents();
+  renderOrderBook();
+  renderEvent(h);
+  updateStep();
+  if (currentStep >= currentRun.history.length) renderSummary(true);
 }
 
 function stepBack() {
-  if(!currentRun||currentStep<=0)return; currentStep--;
-  const t=currentRun.history[currentStep];
-  if(t.action==='accept_trade'){unapplyTrade(currentStep);updateInv();}
-  const conv=document.getElementById('conversation');
-  if(conv.lastChild)conv.removeChild(conv.lastChild);
-  updateStep(); renderSummary(false);
+  if (!currentRun || currentStep <= 0) return;
+  currentStep--;
+  const h = currentRun.history[currentStep];
+  unapplyAction(h);
+  updateAgents();
+  renderOrderBook();
+  const log = document.getElementById('eventLog');
+  if (log.lastChild) log.removeChild(log.lastChild);
+  updateStep();
+  renderSummary(false);
 }
 
 function restart() {
-  if(!currentRun)return; playing=false; currentStep=0;
-  inventories=currentRun.initial_inventories.map(inv=>({...inv}));
-  renderTraders(); document.getElementById('conversation').innerHTML='';
-  updateStep(); renderSummary(false);
+  if (!currentRun) return;
+  playing = false;
+  currentStep = 0;
+  inventories = (currentRun.initial_inventories || []).map(inv => ({...inv}));
+  orderBook = [];
+  renderAgents();
+  renderOrderBook();
+  document.getElementById('eventLog').innerHTML = '';
+  updateStep();
+  renderSummary(false);
 }
 
 async function playAll() {
-  if(!currentRun||playing)return; playing=true;
-  while(currentStep<currentRun.history.length&&playing){stepForward();await new Promise(r=>setTimeout(r,700));}
-  playing=false;
+  if (!currentRun || playing) return;
+  playing = true;
+  while (currentStep < currentRun.history.length && playing) {
+    stepForward();
+    await new Promise(r => setTimeout(r, 500));
+  }
+  playing = false;
 }
 
 function updateStep() {
-  const n=currentRun?currentRun.history.length:0;
-  document.getElementById('stepDisplay').textContent=`${currentStep} / ${n}`;
+  const n = currentRun ? currentRun.history.length : 0;
+  document.getElementById('stepDisplay').textContent = `${currentStep} / ${n}`;
 }
 
 function renderSummary(show) {
-  const el=document.getElementById('summary');
-  if(!show||!currentRun){el.innerHTML='';return;}
-  const r=currentRun;
-  el.innerHTML=`
-    <div><div class="s-val">${(r.total_surplus??0).toFixed(1)}</div><div class="s-lbl">surplus</div></div>
-    <div><div class="s-val">${((r.pareto_efficiency??0)*100).toFixed(0)}%</div><div class="s-lbl">pareto</div></div>
-    <div><div class="s-val">${r.num_trades??0}</div><div class="s-lbl">trades</div></div>
-    <div><div class="s-val">${(r.barter_score??0).toFixed(3)}</div><div class="s-lbl">score</div></div>`;
+  const el = document.getElementById('summary');
+  if (!show || !currentRun) { el.innerHTML = ''; return; }
+  const r = currentRun;
+  const mgc = r.model_goal_completion || {};
+  const modelParts = Object.entries(mgc).map(([m,s]) =>
+    `<div><div class="s-val" style="color:${gc(m)}">${(s*100).toFixed(0)}%</div><div class="s-lbl">${m} goal</div></div>`
+  ).join('');
+  el.innerHTML = `
+    <div><div class="s-val">${((r.avg_goal_completion||0)*100).toFixed(0)}%</div><div class="s-lbl">avg goal</div></div>
+    ${modelParts}
+    <div><div class="s-val">${r.num_trades||0}</div><div class="s-lbl">trades</div></div>
+    <div><div class="s-val">${(r.elapsed_seconds||0).toFixed(1)}s</div><div class="s-lbl">time</div></div>`;
 }
 
 loadData();

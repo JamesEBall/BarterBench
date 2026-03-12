@@ -1,133 +1,185 @@
-"""Bartering engine: runs a multi-round negotiation session between two agents."""
+"""Marketplace engine: runs N-agent trading with an order book."""
 
-import json
+import random
 import time
 
 
-class BarterEngine:
+class MarketEngine:
+    """N-agent marketplace with order book, round-robin turns, fixed round limit."""
+
     def __init__(self, scenario, agents):
         self.scenario = scenario
         self.agents = agents
+        self.num_agents = len(agents)
         self.max_rounds = scenario.get("max_rounds", 10)
-        self.inventories = [dict(s["inventory"]) for s in scenario["agents"]]
-        self.valuations = [s["valuations"] for s in scenario["agents"]]
-        self.roles = [s["role"] for s in scenario["agents"]]
-        self.history = []
-        self.trades_executed = []
-        self.pending_trade = None
-        self.consecutive_ends = 0
+        self.inventories = [dict(a["inventory"]) for a in scenario["agents"]]
+        self.targets = [dict(a.get("target", {})) for a in scenario["agents"]]
+        self.order_book = []  # list of open offers
+        self.next_offer_id = 1
+        self.history = []  # all actions taken
+        self.trades = []   # executed trades
+        self.round_log = []  # per-round summary
 
-    def _compute_value(self, agent_idx, inventory=None):
-        inv = inventory or self.inventories[agent_idx]
-        vals = self.valuations[agent_idx]
-        return sum(qty * vals.get(item, 0) for item, qty in inv.items())
+    def _has_items(self, agent_idx, items):
+        """Check if agent has all specified items."""
+        for item, qty in items.items():
+            if not isinstance(qty, (int, float)) or qty <= 0:
+                return False
+            if self.inventories[agent_idx].get(item, 0) < qty:
+                return False
+        return bool(items)
 
-    def _is_valid_proposal(self, proposer, give, receive):
-        responder = 1 - proposer
+    def _execute_trade(self, poster_idx, accepter_idx, give, want):
+        """Transfer items between two agents."""
+        # poster gives `give` and receives `want`
         for item, qty in give.items():
-            if not isinstance(qty, (int, float)) or qty <= 0:
-                return False
-            if self.inventories[proposer].get(item, 0) < qty:
-                return False
-        for item, qty in receive.items():
-            if not isinstance(qty, (int, float)) or qty <= 0:
-                return False
-            if self.inventories[responder].get(item, 0) < qty:
-                return False
-        if not give and not receive:
-            return False
-        return True
+            self.inventories[poster_idx][item] = self.inventories[poster_idx].get(item, 0) - int(qty)
+            self.inventories[accepter_idx][item] = self.inventories[accepter_idx].get(item, 0) + int(qty)
+        for item, qty in want.items():
+            self.inventories[accepter_idx][item] = self.inventories[accepter_idx].get(item, 0) - int(qty)
+            self.inventories[poster_idx][item] = self.inventories[poster_idx].get(item, 0) + int(qty)
 
-    def _execute_trade(self, trade):
-        proposer = trade["proposer"]
-        responder = 1 - proposer
-        for item, qty in trade["give"].items():
-            self.inventories[proposer][item] = self.inventories[proposer].get(item, 0) - int(qty)
-            self.inventories[responder][item] = self.inventories[responder].get(item, 0) + int(qty)
-        for item, qty in trade["receive"].items():
-            self.inventories[responder][item] = self.inventories[responder].get(item, 0) - int(qty)
-            self.inventories[proposer][item] = self.inventories[proposer].get(item, 0) + int(qty)
-        self.trades_executed.append(trade)
+    def _visible_order_book(self, agent_idx):
+        """Return order book entries visible to this agent (all open offers)."""
+        return [
+            {"id": o["id"], "poster": o["poster"], "give": o["give"], "want": o["want"]}
+            for o in self.order_book
+        ]
+
+    def _remove_stale_offers(self):
+        """Remove offers where the poster no longer has the items."""
+        self.order_book = [
+            o for o in self.order_book
+            if self._has_items(o["poster"], o["give"])
+        ]
+
+    def goal_completion(self, agent_idx):
+        """Compute goal completion for an agent (0-1)."""
+        target = self.targets[agent_idx]
+        if not target:
+            return 1.0
+        inv = self.inventories[agent_idx]
+        scores = []
+        for item, needed in target.items():
+            if needed > 0:
+                have = inv.get(item, 0)
+                scores.append(min(have / needed, 1.0))
+        return sum(scores) / len(scores) if scores else 1.0
 
     def run(self):
-        initial_values = [self._compute_value(i) for i in range(2)]
         start_time = time.time()
-        stop = False
+        initial_inventories = [dict(inv) for inv in self.inventories]
 
         for round_num in range(self.max_rounds):
-            if stop:
-                break
-            for agent_idx in range(2):
-                # Determine what pending trade this agent can respond to
-                visible_pending = None
-                if self.pending_trade and self.pending_trade["proposer"] != agent_idx:
-                    # Flip give/receive from the responder's perspective
-                    visible_pending = {
-                        "proposer_role": self.roles[self.pending_trade["proposer"]],
-                        "give": self.pending_trade["receive"],  # what proposer wants = what responder gives
-                        "receive": self.pending_trade["give"],  # what proposer gives = what responder receives
-                    }
+            # Randomize turn order each round
+            turn_order = list(range(self.num_agents))
+            random.shuffle(turn_order)
 
+            round_actions = []
+            for agent_idx in turn_order:
+                self._remove_stale_offers()
+
+                visible_book = self._visible_order_book(agent_idx)
                 turn = self.agents[agent_idx].take_turn(
-                    role=self.roles[agent_idx],
                     inventory=self.inventories[agent_idx],
-                    valuations=self.valuations[agent_idx],
-                    history=self.history,
-                    pending_trade=visible_pending,
+                    target=self.targets[agent_idx],
+                    order_book=visible_book,
+                    recent_trades=self.trades[-10:],
+                    round_num=round_num,
+                    max_rounds=self.max_rounds,
                 )
 
+                action = turn["action"]
                 entry = {
                     "round": round_num,
                     "agent": agent_idx,
-                    "role": self.roles[agent_idx],
-                    **turn,
+                    "model": self.agents[agent_idx].model_name,
+                    "action": action,
+                    "message": turn.get("message", ""),
                 }
 
-                action = turn["action"]
-
-                if action == "propose_trade":
+                if action == "post_offer":
                     give = turn.get("give", {})
-                    receive = turn.get("receive", {})
-                    if self._is_valid_proposal(agent_idx, give, receive):
-                        self.pending_trade = {
-                            "proposer": agent_idx,
+                    want = turn.get("want", {})
+                    if self._has_items(agent_idx, give) and give and want:
+                        offer = {
+                            "id": self.next_offer_id,
+                            "poster": agent_idx,
                             "give": give,
-                            "receive": receive,
+                            "want": want,
                         }
+                        self.order_book.append(offer)
+                        entry["offer_id"] = self.next_offer_id
+                        entry["give"] = give
+                        entry["want"] = want
+                        self.next_offer_id += 1
                     else:
                         entry["invalid"] = True
-                    self.consecutive_ends = 0
+                        entry["give"] = give
+                        entry["want"] = want
 
-                elif action == "accept_trade":
-                    if self.pending_trade and self.pending_trade["proposer"] != agent_idx:
-                        self._execute_trade(self.pending_trade)
-                        self.pending_trade = None
-                    self.consecutive_ends = 0
+                elif action == "accept_offer":
+                    offer_id = turn.get("offer_id")
+                    matched = None
+                    for o in self.order_book:
+                        if o["id"] == offer_id and o["poster"] != agent_idx:
+                            matched = o
+                            break
 
-                elif action == "reject_trade":
-                    self.pending_trade = None
-                    self.consecutive_ends = 0
+                    if matched and self._has_items(matched["poster"], matched["give"]) \
+                            and self._has_items(agent_idx, matched["want"]):
+                        self._execute_trade(matched["poster"], agent_idx, matched["give"], matched["want"])
+                        trade_record = {
+                            "round": round_num,
+                            "offer_id": matched["id"],
+                            "poster": matched["poster"],
+                            "accepter": agent_idx,
+                            "give": matched["give"],
+                            "want": matched["want"],
+                        }
+                        self.trades.append(trade_record)
+                        self.order_book = [o for o in self.order_book if o["id"] != offer_id]
+                        entry["offer_id"] = offer_id
+                        entry["trade"] = trade_record
+                    else:
+                        entry["invalid"] = True
+                        entry["offer_id"] = offer_id
 
-                elif action == "end_negotiation":
-                    self.consecutive_ends += 1
-                    if self.consecutive_ends >= 2:
-                        self.history.append(entry)
-                        stop = True
-                        break
+                elif action == "pass_turn":
+                    pass  # nothing to do
 
                 self.history.append(entry)
+                round_actions.append(entry)
+
+            # Check if all agents have reached their goals
+            all_complete = all(self.goal_completion(i) >= 1.0 for i in range(self.num_agents))
+            if all_complete:
+                break
 
         elapsed = time.time() - start_time
-        final_values = [self._compute_value(i) for i in range(2)]
+
+        # Compute per-agent results
+        agent_results = []
+        for i in range(self.num_agents):
+            agent_results.append({
+                "agent_idx": i,
+                "model": self.agents[i].model_name,
+                "initial_inventory": initial_inventories[i],
+                "final_inventory": dict(self.inventories[i]),
+                "target": self.targets[i],
+                "goal_completion": round(self.goal_completion(i), 4),
+            })
 
         return {
             "scenario": self.scenario["name"],
-            "initial_inventories": [dict(self.scenario["agents"][i]["inventory"]) for i in range(2)],
-            "final_inventories": [dict(inv) for inv in self.inventories],
-            "initial_values": initial_values,
-            "final_values": final_values,
-            "num_trades": len(self.trades_executed),
+            "scenario_data": self.scenario,
+            "num_agents": self.num_agents,
+            "max_rounds": self.max_rounds,
+            "num_trades": len(self.trades),
             "num_turns": len(self.history),
             "elapsed_seconds": round(elapsed, 2),
+            "agent_results": agent_results,
+            "trades": self.trades,
             "history": self.history,
+            "initial_inventories": initial_inventories,
         }
