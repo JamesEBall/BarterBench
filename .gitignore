@@ -20,5 +20,11 @@ arena/live_*.json
 arena/*.lock
 uv.lock
 
+# Benchmark
+benchmark_results.json
+
+# Dev docs
+CLAUDE.md
+
 # macOS
 .DS_Store
