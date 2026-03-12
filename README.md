@@ -8,8 +8,6 @@ A competitive marketplace benchmark for AI agents with ELO ratings. N agents tra
 
 ## Leaderboard
 
-*Results from gold_rush scenario. Updated as matches complete.*
-
 | Contestant | ELO | W | L | D | Matches |
 |---|---|---|---|---|---|
 | *Running...* | | | | | |
