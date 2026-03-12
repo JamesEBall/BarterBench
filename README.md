@@ -74,16 +74,18 @@ Each turn, an agent observes its current inventory, target, the open order book,
 
 Trades execute **atomically**: when an offer is accepted, both inventories update immediately. Stale offers (where the poster no longer holds the offered items) are automatically removed.
 
-### 2.5 Gossip Protocol (Public vs Private Offers)
+### 2.5 Communication Protocol
 
-Agents choose their information disclosure strategy on every turn:
+Every action includes a free-text `message` field. Agents can communicate without trading — but **communication costs a turn**. An agent that spends a round sending messages instead of trading loses a round of trading time, creating a strategic tradeoff between coordination and execution.
 
-- **Shout** (`post_offer`): Post to the public order book. All traders can see the offer and compete to accept it. Maximizes liquidity but reveals your strategy to the entire market.
-- **Whisper** (`private_offer`): Send a P2P offer to a specific trader. Only the poster and target can see it. Reduces competition but limits the pool of potential counterparties.
+There are two communication channels:
 
-This creates a strategic tradeoff between **transparency and secrecy**. An agent holding scarce gold might whisper a favorable deal to one buyer rather than posting it publicly and triggering a bidding war. Conversely, an agent seeking a scarce item might post publicly to maximize their chances of finding a willing seller.
+- **Shout** (`post_offer`): Post to the public order book. All traders can see the offer and its message. Maximizes liquidity but reveals your strategy to the entire market.
+- **Whisper** (`private_offer`): Send a P2P offer to a specific trader. Only the poster and target can see it — other agents have no knowledge the offer exists. Enables secret deals and private coordination.
 
-Private offers appear as `[WHISPER]` in the order book of the target agent. Other agents have no knowledge that the offer exists.
+Even a `pass_turn` carries a message, so agents can broadcast intentions, signal willingness to trade, or coordinate strategy without committing to an offer — at the cost of their action for that round.
+
+This creates a strategic tradeoff between **transparency and secrecy**. An agent holding scarce gold might whisper a favorable deal to one buyer rather than posting it publicly and triggering a bidding war. Conversely, an agent seeking a scarce item might post publicly to maximize their chances of finding a willing seller. Same-model agents can use messages to gossip, divide responsibilities, or collude — all within the rules.
 
 ### 2.6 Turn Structure
 
@@ -95,9 +97,25 @@ Each round proceeds as follows:
 4. After all agents act, stale offers are pruned
 5. If all agents have reached their goals, the game ends early
 
+### 2.7 Round Awareness
+
+Agents see `Round X of Y` on every turn. This is deliberate — models that reason about time pressure can adapt their strategy: bidding aggressively early for scarce items, accepting worse trades as the deadline approaches, or switching from acquisition to denial in the final rounds.
+
+### 2.8 Emergent Strategies (Legal)
+
+The rules intentionally leave room for emergent strategic behavior. The following are **legal and expected**:
+
+- **Hoarding**: An agent that has already met its target for a scarce item can continue holding (or acquiring more of) that item to **deny competitors**. Goal completion is capped at 1.0, so there is no scoring bonus for overshooting — but there is a strategic benefit: every scarce item you hold is one your opponent doesn't have. Models that recognize this defensive dimension will outperform those that stop trading once their own goals are met.
+
+- **Collusion via messages**: Agents can use shouts (public) or whispers (private) to **coordinate with teammates** — e.g., "I'll handle diamond trades, you focus on silk." They can even pass their turn just to broadcast a message, though this costs a round of trading. Nothing prevents same-model agents from establishing conventions, dividing responsibilities, or gossiping about other traders' behavior. Models that leverage communication for team coordination gain a significant edge — but must balance coordination time against the round limit.
+
+- **Denial trading**: An agent can accept an offer purely to **prevent a competitor** from getting the item, even if the trade doesn't advance its own goals. This is a valid competitive strategy — disrupting opponents is as valuable as advancing your own position.
+
+These behaviors are not bugs — they are exactly the kind of strategic depth that separates strong models from weak ones. A model that only naively optimizes its own goal completion will lose to one that also plays defense and coordinates with allies.
+
 ## 3. Scenarios
 
-BarterBench ships with three scenarios of increasing complexity. Each is designed around a specific scarcity structure that tests different capabilities.
+BarterBench ships with scenarios of increasing complexity. Each is designed around a specific scarcity structure that tests different capabilities.
 
 ### 3.1 Gold Rush — Speed and Competitive Bidding
 
@@ -211,6 +229,29 @@ The longest required trade chains can reach 3–4 hops. Simultaneously, gold and
 
 **What it tests.** Multi-hop trade planning (reasoning 3+ steps ahead), dual scarcity management (prioritizing which scarce item to pursue), and operating in a complex marketplace where direct trades are rarely possible — the classic Jevons double coincidence problem at scale.
 
+### 3.4 Grand Bazaar — The Big Arena Benchmark
+
+```
+Agents: 12 | Items: 7 (iron, timber, grain, spice, silk, diamonds, jade) | Rounds: 12
+Scarcity: Silk — supply 6, demand 8 (ratio 0.75)
+          Diamonds — supply 6, demand 8 (ratio 0.75)
+```
+
+**Setup.** Twelve agents in six paired roles (each pair has identical inventory and target, eliminating positional bias):
+
+| Agents | Start | Goal |
+|---|---|---|
+| Trader 0, 1 | iron ×6 | spice ×2, silk ×2, diamonds ×1 |
+| Trader 2, 3 | timber ×6 | iron ×2, diamonds ×1, jade ×1 |
+| Trader 4, 5 | grain ×6 | timber ×2, spice ×1, diamonds ×1, jade ×1 |
+| Trader 6, 7 | spice ×6 | timber ×2, silk ×2, diamonds ×1 |
+| Trader 8, 9 | silk ×3 | iron ×2, grain ×1, spice ×1, jade ×1 |
+| Trader 10, 11 | diamonds ×3, jade ×5 | iron ×1, timber ×1, grain ×2, spice ×1 |
+
+**Trade dynamics.** Many trades require multi-hop chains. Iron holders (0, 1) want spice, but spice holders (6, 7) want timber, not iron — so iron holders must first acquire timber through intermediary trades. With 12 agents and 7 items, the dependency web is dense. Silk and diamonds are both scarce at 75% supply-to-demand ratio, creating competition on two fronts.
+
+**What it tests.** Designed as the primary benchmark scenario for hybrid anchor mode. Tests multi-hop planning, dual scarcity management, and competitive resource allocation at scale.
+
 ## 4. Scoring
 
 ### 4.1 Goal Completion
@@ -295,7 +336,22 @@ A key property of Elo ratings: **new contestants can be added at any time** with
 
 ## 6. Quick Start
 
-### Benchmark Mode (compare models)
+### Hybrid Anchor Benchmark (fast leaderboard)
+
+One big scenario, half agents are a cheap anchor model (default: Haiku), the rest are test models. One run = one leaderboard. 3–5 runs for stability instead of 15–20 pairwise matches.
+
+```bash
+# Quick benchmark: sonnet & opus vs haiku anchor, 3 runs
+python3 eval.py --benchmark --models sonnet,opus --runs 3
+
+# Custom anchor and scenario
+python3 eval.py --benchmark --anchor sonnet --models opus,haiku --eval grand_bazaar --runs 5
+
+# Verbose for debugging
+python3 eval.py --benchmark --models sonnet,opus --runs 1 --verbose
+```
+
+### Pairwise ELO Mode (compare models head-to-head)
 
 ```bash
 # Single match

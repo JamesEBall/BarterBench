@@ -17,6 +17,7 @@ from scoring import compute_metrics
 SCENARIOS_DIR = Path(__file__).parent / "scenarios"
 RESULTS_FILE = Path(__file__).parent / "results.json"
 RUNS_DIR = Path(__file__).parent / "runs"
+BENCHMARK_RESULTS_FILE = Path(__file__).parent / "benchmark_results.json"
 
 
 # ---- Scenario helpers ----
@@ -149,6 +150,147 @@ def print_leaderboard(results):
         else:
             print(f"  {model:<12} {score:>9.1f}% {trades:>11.1f} {invalids:>8.1f}% {n:>6}")
     print("=" * 75)
+
+
+# ---- Benchmark mode ----
+
+def build_benchmark_config(anchor, test_models, num_agents):
+    """Build model config for benchmark: half anchor, rest split across test models."""
+    anchor_count = num_agents // 2
+    remaining = num_agents - anchor_count
+
+    config = [(anchor, anchor_count)]
+    if test_models:
+        base = remaining // len(test_models)
+        extra = remaining % len(test_models)
+        for i, model in enumerate(test_models):
+            count = base + (1 if i < extra else 0)
+            if count > 0:
+                config.append((model, count))
+
+    config_str = ",".join(f"{m}:{c}" for m, c in config)
+    return config, config_str
+
+
+def print_benchmark_leaderboard(run_entries, anchor):
+    """Print benchmark leaderboard: model performance vs anchor."""
+    if not run_entries:
+        return
+
+    model_stats = {}
+    for entry in run_entries:
+        if "error" in entry:
+            continue
+        mgc = entry.get("model_goal_completion", {})
+        anchor_score = mgc.get(anchor, 0)
+
+        for model, score in mgc.items():
+            if model not in model_stats:
+                model_stats[model] = {"scores": [], "vs_anchor": []}
+            model_stats[model]["scores"].append(score)
+            if model != anchor:
+                if score - anchor_score >= 0.02:
+                    model_stats[model]["vs_anchor"].append("win")
+                elif anchor_score - score >= 0.02:
+                    model_stats[model]["vs_anchor"].append("loss")
+                else:
+                    model_stats[model]["vs_anchor"].append("draw")
+
+    # Aggregate scarce item capture
+    scarce_totals = {}
+    scarce_counts = {}
+    for entry in run_entries:
+        if "error" in entry:
+            continue
+        for item, captures in entry.get("scarce_capture", {}).items():
+            if item not in scarce_totals:
+                scarce_totals[item] = {}
+                scarce_counts[item] = 0
+            scarce_counts[item] += 1
+            for model, qty in captures.items():
+                scarce_totals[item][model] = scarce_totals[item].get(model, 0) + qty
+
+    print("\n" + "=" * 80)
+    print("  BENCHMARK LEADERBOARD")
+    print("=" * 80)
+    print(f"  {'Model':<14} {'Avg Goal%':>10} {'vs Anchor':>12} {'W-L-D':>10}")
+    print("-" * 80)
+
+    rows = []
+    for model, stats in model_stats.items():
+        n = len(stats["scores"])
+        avg = sum(stats["scores"]) / n * 100
+        wins = stats["vs_anchor"].count("win")
+        losses = stats["vs_anchor"].count("loss")
+        draws = stats["vs_anchor"].count("draw")
+        if model == anchor:
+            vs_str = "baseline"
+            wld = "-"
+        else:
+            total = wins + losses + draws
+            vs_str = f"{wins / total * 100:.0f}% wins" if total > 0 else "-"
+            wld = f"{wins}-{losses}-{draws}"
+        rows.append((model, avg, vs_str, wld, model == anchor))
+
+    rows.sort(key=lambda r: r[1], reverse=True)
+
+    for model, avg, vs_str, wld, is_anchor in rows:
+        marker = " *" if is_anchor else "  "
+        print(f"{marker}{model:<12} {avg:>9.1f}% {vs_str:>12} {wld:>10}")
+
+    if scarce_totals:
+        print()
+        print(f"  Scarce Item Capture (avg per run):")
+        for item in sorted(scarce_totals.keys()):
+            parts = []
+            for model in sorted(scarce_totals[item].keys()):
+                avg_qty = scarce_totals[item][model] / scarce_counts[item]
+                parts.append(f"{model}={avg_qty:.1f}")
+            print(f"    {item}: {', '.join(parts)}")
+
+    print()
+    print("  * = anchor (baseline)")
+    print("=" * 80)
+
+
+def run_benchmark(scenario_name, anchor, test_models, runs, verbose):
+    """Run benchmark mode: test models against anchor in a single scenario."""
+    scenario = load_scenario(scenario_name)
+    num_agents = len(scenario["agents"])
+
+    config, config_str = build_benchmark_config(anchor, test_models, num_agents)
+
+    print(f"Benchmark Mode: {scenario_name}")
+    print(f"  Anchor: {anchor} ({config[0][1]} agents)")
+    test_info = ", ".join(f"{m}({c})" for m, c in config[1:])
+    print(f"  Test models: {test_info}")
+    print(f"  Agents: {num_agents} | Rounds: {scenario.get('max_rounds', 10)} | Runs: {runs}")
+    print()
+
+    if BENCHMARK_RESULTS_FILE.exists():
+        with open(BENCHMARK_RESULTS_FILE) as f:
+            all_results = json.load(f)
+    else:
+        all_results = []
+
+    run_offset = len(all_results)
+    run_entries = []
+
+    for run_num in range(runs):
+        run_id = run_offset + run_num + 1
+        print(f"  Run {run_num + 1}/{runs}")
+        entry = run_single(scenario_name, scenario, config, config_str, run_id, verbose)
+        entry["mode"] = "benchmark"
+        entry["anchor_model"] = anchor
+        run_entries.append(entry)
+        all_results.append(entry)
+
+        with open(BENCHMARK_RESULTS_FILE, "w") as f:
+            json.dump(all_results, f, indent=2)
+        save_run_file(entry, scenario_name)
+
+    print_benchmark_leaderboard(run_entries, anchor)
+    print(f"\nResults saved to {BENCHMARK_RESULTS_FILE}")
 
 
 # ---- Run a single match (model vs model) ----
@@ -363,6 +505,11 @@ def main():
                         help="Strategies to compete: 'aggressive,cooperative' or omit for all")
     parser.add_argument("--submit", nargs=2, metavar=("NAME", "PROMPT"),
                         help="Submit a new strategy: --submit 'my_strat' 'Your prompt here'")
+    # Benchmark mode (hybrid anchor)
+    parser.add_argument("--benchmark", action="store_true",
+                        help="Benchmark mode: test models against a cheap anchor model in one big scenario")
+    parser.add_argument("--anchor", type=str, default="haiku",
+                        help="Anchor model for benchmark mode (default: haiku)")
     args = parser.parse_args()
 
     if args.serve:
@@ -420,10 +567,29 @@ def main():
         run_arena(strat_names, scenario, args.runs, args.verbose, models=models)
         return
 
+    # ---- Benchmark mode (hybrid anchor) ----
+    if args.benchmark:
+        if not args.models:
+            print("Error: --models required for benchmark mode.")
+            print("  Example: --benchmark --models sonnet,opus")
+            sys.exit(1)
+        scenario_name = args.eval or "grand_bazaar"
+        test_models = [m.strip().split(":")[0] for m in args.models.split(",")]
+        test_models = [m for m in test_models if m != args.anchor]
+        if not test_models:
+            print("Error: --models must include at least one model besides the anchor.")
+            sys.exit(1)
+        run_benchmark(scenario_name, args.anchor, test_models, args.runs or 3, args.verbose)
+        return
+
     if not args.eval:
         print("BarterBench: competitive marketplace benchmark with ELO ratings")
         print()
-        print("Benchmark mode (compare models):")
+        print("Benchmark mode (hybrid anchor — fast leaderboard):")
+        print("  python3 eval.py --benchmark --models sonnet,opus --runs 3")
+        print("  python3 eval.py --benchmark --anchor sonnet --models opus,haiku --eval grand_bazaar")
+        print()
+        print("Pairwise mode (compare models head-to-head with ELO):")
         print("  python3 eval.py --eval <scenario> --models <config>")
         print("  python3 eval.py --eval all --models haiku,opus --runs 3")
         print()
