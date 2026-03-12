@@ -305,8 +305,18 @@ tr.clickable:hover td { background: #e5e7eb; }
 }
 .ob-entry:last-child { border-bottom: none; }
 
+.replay-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+@media (max-width: 700px) {
+  .replay-split { grid-template-columns: 1fr; }
+}
+
 .event-log {
-  max-height: 400px;
+  max-height: 500px;
   overflow-y: auto;
   padding: 0.5rem 0;
   scrollbar-width: thin;
@@ -364,10 +374,7 @@ tr.clickable:hover td { background: #e5e7eb; }
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 0.75rem 1rem;
-  margin-top: 0.75rem;
-  display: none;
 }
-.reasoning-panel.visible { display: block; }
 .reasoning-panel .rp-label {
   font-family: var(--mono);
   font-size: 0.6rem;
@@ -385,10 +392,30 @@ tr.clickable:hover td { background: #e5e7eb; }
 .reasoning-panel .rp-text {
   font-size: 0.75rem;
   color: var(--text2);
-  line-height: 1.6;
-  white-space: pre-wrap;
-  max-height: 200px;
+  line-height: 1.7;
+  max-height: 500px;
   overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+.reasoning-panel .rp-text p { margin: 0 0 0.5em; }
+.reasoning-panel .rp-text strong { color: var(--text); }
+.reasoning-panel .rp-text code {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 0.1em 0.3em;
+  font-family: var(--mono);
+  font-size: 0.9em;
+}
+.reasoning-panel .rp-text ul, .reasoning-panel .rp-text ol {
+  margin: 0.3em 0 0.5em 1.2em;
+}
+.reasoning-panel .rp-text li { margin-bottom: 0.2em; }
+.reasoning-panel .rp-empty {
+  color: var(--text3);
+  font-style: italic;
+  font-size: 0.7rem;
 }
 
 .controls {
@@ -514,11 +541,13 @@ tr.clickable:hover td { background: #e5e7eb; }
     <div class="ob-label">Order Book</div>
     <div id="obEntries"><span style="color:var(--text3);font-size:0.7rem">empty</span></div>
   </div>
-  <div class="event-log" id="eventLog"></div>
-  <div class="reasoning-panel" id="reasoningPanel">
-    <div class="rp-label">Agent Reasoning</div>
-    <div class="rp-agent" id="rpAgent"></div>
-    <div class="rp-text" id="rpText"></div>
+  <div class="replay-split">
+    <div class="event-log" id="eventLog"></div>
+    <div class="reasoning-panel" id="reasoningPanel">
+      <div class="rp-label">Agent Reasoning</div>
+      <div class="rp-agent" id="rpAgent"></div>
+      <div class="rp-text" id="rpText"><span class="rp-empty">Click an event or step through the replay</span></div>
+    </div>
   </div>
   <div class="summary-bar" id="summary"></div>
 </div>
@@ -1008,22 +1037,57 @@ function renderEvent(h) {
   const message = h.message || '';
   const thoughtText = reasoning ? `${reasoning}\n\nAction message: ${message}` : message;
   if (thoughtText) {
-    div.onclick = () => showReasoning(h.agent, label, color, thoughtText);
+    div.onclick = () => {
+      log.querySelectorAll('.event.selected').forEach(e => e.classList.remove('selected'));
+      div.classList.add('selected');
+      showReasoning(h.agent, label, color, thoughtText);
+    };
   }
   log.appendChild(div);
   log.scrollTop = log.scrollHeight;
   // Auto-show reasoning for latest event
-  if (thoughtText) showReasoning(h.agent, label, color, thoughtText);
+  if (thoughtText) {
+    log.querySelectorAll('.event.selected').forEach(e => e.classList.remove('selected'));
+    div.classList.add('selected');
+    showReasoning(h.agent, label, color, thoughtText);
+  }
+}
+
+function renderMarkdown(text) {
+  // Simple markdown: **bold**, *italic*, `code`, - lists, numbered lists, paragraphs
+  let html = text
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    .replace(/`(.+?)`/g, '<code>$1</code>');
+  // Split into paragraphs, handle lists
+  const lines = html.split('\n');
+  let out = '', inList = false, listType = '';
+  for (const line of lines) {
+    const trimmed = line.trim();
+    const ulMatch = trimmed.match(/^[-*]\s+(.+)/);
+    const olMatch = trimmed.match(/^\d+[.)]\s+(.+)/);
+    if (ulMatch) {
+      if (!inList || listType !== 'ul') { if (inList) out += `</${listType}>`; out += '<ul>'; inList = true; listType = 'ul'; }
+      out += `<li>${ulMatch[1]}</li>`;
+    } else if (olMatch) {
+      if (!inList || listType !== 'ol') { if (inList) out += `</${listType}>`; out += '<ol>'; inList = true; listType = 'ol'; }
+      out += `<li>${olMatch[1]}</li>`;
+    } else {
+      if (inList) { out += `</${listType}>`; inList = false; }
+      if (trimmed) out += `<p>${trimmed}</p>`;
+    }
+  }
+  if (inList) out += `</${listType}>`;
+  return out;
 }
 
 function showReasoning(agentIdx, label, color, text) {
-  const panel = document.getElementById('reasoningPanel');
   const agentEl = document.getElementById('rpAgent');
   const textEl = document.getElementById('rpText');
-  panel.classList.add('visible');
   agentEl.style.color = color;
   agentEl.textContent = `Trader ${agentIdx} (${label})`;
-  textEl.textContent = text;
+  textEl.innerHTML = renderMarkdown(text);
 }
 
 function applyAction(h) {
