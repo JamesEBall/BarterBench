@@ -82,7 +82,10 @@ class MarketEngine:
         ]
 
     def _write_live(self, initial_inventories, start_time, status="running"):
-        """Write current match state to live_match.json for dashboard streaming."""
+        """Write current match state to live_match.json for dashboard streaming.
+
+        Thread-safe: uses fcntl file locking so parallel runs don't corrupt the file.
+        """
         try:
             live_file = Path(__file__).parent / "live_match.json"
             agent_results = []
@@ -113,10 +116,14 @@ class MarketEngine:
                 "trades": self.trades,
                 "history": self.history,
             }
+            import fcntl
             with open(live_file, "w") as f:
+                fcntl.flock(f, fcntl.LOCK_EX)
                 json.dump(live, f)
-        except Exception:
-            pass  # non-critical, don't break the match
+                fcntl.flock(f, fcntl.LOCK_UN)
+        except Exception as e:
+            import sys
+            print(f"[warn] live update write failed: {e}", file=sys.stderr)
 
     def goal_completion(self, agent_idx):
         """Compute goal completion for an agent (0-1)."""

@@ -98,9 +98,8 @@ def _build_marketplace_context(agent_idx, inventory, target, order_book, recent_
         f"Round {round_num + 1} of {max_rounds}.",
         "",
         "## Your Goal",
-        "Acquire items to match your TARGET inventory. You are competing against other traders —",
-        "some items are SCARCE (demand exceeds supply), so not everyone can reach their goal.",
-        "Trade aggressively to secure what you need before others do.",
+        "Acquire items to match your TARGET inventory through trading.",
+        "Some items are SCARCE (demand exceeds supply across all traders), so not everyone can fully reach their goal.",
         "",
         f"Your current inventory: {json.dumps(inventory)}",
         f"Your target inventory:  {json.dumps(target)}",
@@ -122,9 +121,6 @@ def _build_marketplace_context(agent_idx, inventory, target, order_book, recent_
         "5. Trades execute immediately when accepted — both inventories update",
         "6. You can only offer items you currently have (quantity > 0)",
         "7. You cannot accept your own offers",
-        "8. Be strategic: scarce items have leverage — don't give them away cheaply",
-        "9. Think about multi-hop trades: trade what you have for intermediary items to reach your goal",
-        "10. Use private offers to make deals without revealing your strategy to other traders",
     ])
 
     if order_book:
@@ -188,13 +184,16 @@ class MarketAgent:
     """Marketplace agent that calls Claude via API or CLI."""
 
     def __init__(self, model_name: str, agent_idx: int, backend: str = "auto",
-                 strategy_id: str = None, strategy_prompt: str = None):
+                 strategy_id: str = None, strategy_prompt: str = None,
+                 temperature: float = 1.0):
         self.model_name = model_name
         self.agent_idx = agent_idx
         self.strategy_id = strategy_id
         self.strategy_prompt = strategy_prompt
+        self.temperature = temperature
         self.total_input_tokens = 0
         self.total_output_tokens = 0
+        self.conversation_history = []  # stateful: accumulate turns within a match
 
         if backend == "auto":
             self.backend = "api" if os.environ.get("ANTHROPIC_API_KEY") else "cli"
@@ -226,13 +225,18 @@ class MarketAgent:
             strategy_prompt=self.strategy_prompt,
         )
 
+        # Build messages: include conversation history for statefulness
+        messages = list(self.conversation_history)
+        messages.append({"role": "user", "content": "It's your turn. Choose your action."})
+
         for attempt in range(3):
             try:
                 response = self.client.messages.create(
                     model=self.model,
                     max_tokens=512,
+                    temperature=self.temperature,
                     system=context,
-                    messages=[{"role": "user", "content": "It's your turn. Choose your action."}],
+                    messages=messages,
                     tools=MARKETPLACE_TOOLS,
                     tool_choice={"type": "any"},
                 )
@@ -249,6 +253,7 @@ class MarketAgent:
         reasoning = ""
         tool_name = "pass_turn"
         tool_input = {"message": ""}
+        tool_use_id = None
 
         for block in response.content:
             if block.type == "text":
@@ -256,6 +261,31 @@ class MarketAgent:
             elif block.type == "tool_use":
                 tool_name = block.name
                 tool_input = block.input
+                tool_use_id = block.id
+
+        # Record this exchange in conversation history for statefulness
+        # Keep system context fresh each round but preserve the agent's reasoning thread
+        self.conversation_history.append({"role": "user", "content": f"It's your turn. Choose your action."})
+        # Reconstruct assistant response content
+        assistant_content = []
+        if reasoning:
+            assistant_content.append({"type": "text", "text": reasoning})
+        if tool_use_id:
+            assistant_content.append({"type": "tool_use", "id": tool_use_id, "name": tool_name, "input": tool_input})
+        if assistant_content:
+            self.conversation_history.append({"role": "assistant", "content": assistant_content})
+            # Add tool result to close the tool_use turn
+            if tool_use_id:
+                self.conversation_history.append({
+                    "role": "user",
+                    "content": [{"type": "tool_result", "tool_use_id": tool_use_id,
+                                 "content": f"Action executed: {tool_name}"}]
+                })
+
+        # Cap history to last 6 exchanges (3 rounds) to control token usage
+        max_history_items = 18  # 6 exchanges × 3 messages each
+        if len(self.conversation_history) > max_history_items:
+            self.conversation_history = self.conversation_history[-max_history_items:]
 
         return {
             "action": tool_name,

@@ -714,6 +714,7 @@ svg text { font-family: var(--mono); }
 .run-selector {
   width: 220px;
   min-width: 220px;
+  max-height: 420px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 0 12px 12px 0;
@@ -816,7 +817,7 @@ svg text { font-family: var(--mono); }
       <input type="text" id="suiteModels" placeholder="sonnet" value="sonnet" oninput="updateSuiteInfo()">
       <button class="launch-btn" id="suiteBtn" onclick="runSuite()">Run Eval</button>
     </div>
-    <div class="suite-info" id="suiteInfo">Runs sonnet vs haiku anchor across 4 scenarios (12 runs total)</div>
+    <div class="suite-info" id="suiteInfo">Runs sonnet vs haiku anchor across 4 scenarios (40 runs total)</div>
   </div>
   <div class="launcher-tab-content" id="tabCustom">
     <div class="launcher-form">
@@ -865,6 +866,10 @@ svg text { font-family: var(--mono); }
       <div class="launcher-field" id="anchorField" style="display:none">
         <label>Anchor <span class="tip">?<span class="tiptext">The baseline model in benchmark mode. Test models are compared against this. Typically a cheap/fast model like haiku.</span></span></label>
         <input type="text" id="advAnchor" value="haiku" placeholder="haiku">
+      </div>
+      <div class="launcher-field">
+        <label>Temperature <span class="tip">?<span class="tiptext">LLM sampling temperature (0.0-2.0). Lower = more deterministic. API backend only.</span></span></label>
+        <input type="number" id="advTemperature" value="1.0" min="0" max="2" step="0.1">
       </div>
     </div>
     <button class="launch-btn" id="launchAdvBtn" onclick="launchAdvanced()">Launch</button>
@@ -1029,7 +1034,7 @@ function itemStrShort(items) {
 // ============================================================
 // STATE
 // ============================================================
-let allData = [], eloRatings = {}, matchLog = [];
+let allData = [], eloRatings = {}, btRatings = {}, matchLog = [];
 let currentRun = null, currentStep = 0, inventories = [], orderBookState = [], playing = false;
 let goalHistory = [];
 let goalChartInstance = null;
@@ -1062,6 +1067,7 @@ class MarketScene {
     this._buildStalls();
     this._raf = null;
     this._lastTime = 0;
+    this._meetingSpots = [];
     this.start();
   }
 
@@ -1168,10 +1174,23 @@ class MarketScene {
         role: MEDIEVAL_ROLES[i % MEDIEVAL_ROLES.length],
         state: 'idle', // idle, walking, talking
         bobPhase: Math.random() * Math.PI * 2,
+        facingRight: Math.random() > 0.5,
         bubbleTimer: 0,
         bubble: null,
       });
     }
+
+    // Pre-compute meeting spots around the courtyard (not the center!)
+    this._meetingSpots = [
+      { x: this.W * 0.25, y: this.H * 0.35 },
+      { x: this.W * 0.75, y: this.H * 0.35 },
+      { x: this.W * 0.25, y: this.H * 0.65 },
+      { x: this.W * 0.75, y: this.H * 0.65 },
+      { x: this.W * 0.5,  y: this.H * 0.25 },
+      { x: this.W * 0.5,  y: this.H * 0.75 },
+      { x: this.W * 0.35, y: this.H * 0.5  },
+      { x: this.W * 0.65, y: this.H * 0.5  },
+    ];
 
     // Build event queue from history
     this.eventQueue = runData.history.map((h, i) => ({ ...h, _idx: i }));
@@ -1218,9 +1237,22 @@ class MarketScene {
     if (!agent) return;
 
     if (h.action === 'post_offer' && !h.invalid) {
-      // Walk to centre (public shout)
-      agent.targetX = this.centreX + (Math.random() - 0.5) * 30;
-      agent.targetY = this.centreY + (Math.random() - 0.5) * 30;
+      // Walk to a relevant stall or open market area (not always the centre!)
+      const giveItems = h.give ? Object.keys(h.give) : [];
+      const matchingStall = giveItems.length > 0 && this.stalls.find(s => giveItems.includes(s.item));
+      if (matchingStall) {
+        // Go near the stall that matches what they're offering
+        agent.targetX = matchingStall.x + matchingStall.w/2 + (Math.random() - 0.5) * 20;
+        agent.targetY = matchingStall.y + (matchingStall.y < this.centreY ? 50 : -50) + (Math.random() - 0.5) * 15;
+      } else {
+        // Pick a random meeting spot around the courtyard
+        const spot = this._meetingSpots[agentIdx % this._meetingSpots.length];
+        agent.targetX = spot.x + (Math.random() - 0.5) * 40;
+        agent.targetY = spot.y + (Math.random() - 0.5) * 30;
+      }
+      // Clamp to canvas bounds
+      agent.targetX = Math.max(40, Math.min(this.W - 40, agent.targetX));
+      agent.targetY = Math.max(40, Math.min(this.H - 40, agent.targetY));
       agent.state = 'walking';
       agent.bubble = {
         text: itemStrShort(h.give || {}) + ' \u2192 ' + itemStrShort(h.want || {}),
@@ -1247,11 +1279,17 @@ class MarketScene {
         type: 'whisper',
       };
     } else if (h.action === 'accept_offer' && !h.invalid && h.trade) {
-      // Walk to poster
+      // Walk to meet the poster halfway (not on top of them)
       const poster = this.agents[h.trade.poster];
       if (poster) {
-        agent.targetX = poster.x + (agentIdx < h.trade.poster ? -25 : 25);
-        agent.targetY = poster.y;
+        const midX = (agent.x + poster.x) / 2;
+        const midY = (agent.y + poster.y) / 2;
+        agent.targetX = midX + (agentIdx < h.trade.poster ? -18 : 18);
+        agent.targetY = midY;
+        // Also move poster towards the meeting point
+        poster.targetX = midX + (agentIdx < h.trade.poster ? 18 : -18);
+        poster.targetY = midY;
+        poster.state = 'walking';
       }
       agent.state = 'walking';
       agent.bubble = {
@@ -1340,18 +1378,45 @@ class MarketScene {
     for (const a of this.agents) {
       a.bobPhase += dt * 2.5;
 
-      // Idle wandering: pick a new nearby target periodically
+      // Idle wandering: varied patterns near home
       if (a.state === 'idle') {
         if (!a.wanderTimer) a.wanderTimer = 1 + Math.random() * 3;
         a.wanderTimer -= dt;
         if (a.wanderTimer <= 0) {
-          a.wanderTimer = 2 + Math.random() * 4;
-          const wanderRadius = 35;
-          a.targetX = a.homeX + (Math.random() - 0.5) * wanderRadius * 2;
-          a.targetY = a.homeY + (Math.random() - 0.5) * wanderRadius * 2;
+          a.wanderTimer = 2.5 + Math.random() * 4;
+          const wanderRadius = 40;
+          // Occasionally wander to a stall or meeting spot instead of just near home
+          const wanderRoll = Math.random();
+          if (wanderRoll < 0.15 && this.stalls.length > 0) {
+            // Visit a random stall
+            const stall = this.stalls[Math.floor(Math.random() * this.stalls.length)];
+            a.targetX = stall.x + stall.w/2 + (Math.random() - 0.5) * 30;
+            a.targetY = stall.y + (stall.y < this.centreY ? 45 : -45);
+          } else if (wanderRoll < 0.25 && this._meetingSpots) {
+            // Wander to a meeting spot
+            const spot = this._meetingSpots[Math.floor(Math.random() * this._meetingSpots.length)];
+            a.targetX = spot.x + (Math.random() - 0.5) * 30;
+            a.targetY = spot.y + (Math.random() - 0.5) * 30;
+          } else {
+            // Normal wander near home
+            a.targetX = a.homeX + (Math.random() - 0.5) * wanderRadius * 2;
+            a.targetY = a.homeY + (Math.random() - 0.5) * wanderRadius * 2;
+          }
           // Clamp to canvas
-          a.targetX = Math.max(30, Math.min(this.W - 30, a.targetX));
-          a.targetY = Math.max(30, Math.min(this.H - 30, a.targetY));
+          a.targetX = Math.max(35, Math.min(this.W - 35, a.targetX));
+          a.targetY = Math.max(35, Math.min(this.H - 35, a.targetY));
+        }
+      }
+
+      // Simple collision avoidance — nudge away from nearby agents
+      for (const b of this.agents) {
+        if (b.idx === a.idx) continue;
+        const cdx = a.x - b.x, cdy = a.y - b.y;
+        const cdist = Math.sqrt(cdx*cdx + cdy*cdy);
+        if (cdist < 22 && cdist > 0.1) {
+          const pushStrength = (22 - cdist) * 0.3 * dt;
+          a.x += (cdx / cdist) * pushStrength;
+          a.y += (cdy / cdist) * pushStrength;
         }
       }
 
@@ -1365,6 +1430,20 @@ class MarketScene {
         const step = Math.min(speed * dt, dist);
         a.x += (dx / dist) * step;
         a.y += (dy / dist) * step;
+        // Update facing direction based on movement
+        if (Math.abs(dx) > 1) a.facingRight = dx > 0;
+        // Spawn dust particles when walking purposefully
+        if (a.state === 'walking' && Math.random() < dt * 8) {
+          this.particles.push({
+            x: a.x + (Math.random() - 0.5) * 6,
+            y: a.y + 12,
+            vx: (Math.random() - 0.5) * 10,
+            vy: -3 - Math.random() * 5,
+            life: 0.5 + Math.random() * 0.3,
+            color: 'hsl(35, 20%, 65%)',
+            size: 1 + Math.random() * 2,
+          });
+        }
       } else {
         if (a.state === 'walking') {
           a.state = 'talking';
@@ -1600,17 +1679,38 @@ class MarketScene {
       ctx.moveTo(a.x - 8, ay + 2);
       ctx.quadraticCurveTo(a.x, ay + 16, a.x + 8, ay + 2);
       ctx.fill();
+      // Outline for visibility
+      ctx.strokeStyle = 'rgba(0,0,0,0.2)';
+      ctx.lineWidth = 0.5;
+      ctx.beginPath();
+      ctx.arc(a.x, ay - 4, 10, 0, Math.PI * 2);
+      ctx.stroke();
       // Head
       ctx.fillStyle = '#f5deb3'; // wheat skin
       ctx.beginPath();
       ctx.arc(a.x, ay - 12, 6, 0, Math.PI * 2);
       ctx.fill();
-      // Eyes
+      // Eyes — shift based on facing direction
+      const eyeOff = a.facingRight ? 1 : -1;
       ctx.fillStyle = '#333';
       ctx.beginPath();
-      ctx.arc(a.x - 2, ay - 13, 1, 0, Math.PI * 2);
-      ctx.arc(a.x + 2, ay - 13, 1, 0, Math.PI * 2);
+      ctx.arc(a.x - 2 + eyeOff, ay - 13, 1, 0, Math.PI * 2);
+      ctx.arc(a.x + 2 + eyeOff, ay - 13, 1, 0, Math.PI * 2);
       ctx.fill();
+      // Walking animation — slight arm swing
+      if (a.state === 'walking') {
+        const armSwing = Math.sin(a.bobPhase * 3) * 4;
+        ctx.strokeStyle = a.color;
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.moveTo(a.x - 7, ay - 2);
+        ctx.lineTo(a.x - 10, ay + 4 + armSwing);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(a.x + 7, ay - 2);
+        ctx.lineTo(a.x + 10, ay + 4 - armSwing);
+        ctx.stroke();
+      }
 
       // Label below
       ctx.font = 'bold 9px ' + getComputedStyle(document.body).getPropertyValue('--mono');
@@ -1711,6 +1811,8 @@ async function loadData() {
   eloRatings = {};
   try { const r = await fetch('elo_ratings.json'); Object.assign(eloRatings, await r.json()); } catch {}
   try { const r = await fetch('arena/elo_ratings.json'); Object.assign(eloRatings, await r.json()); } catch {}
+  btRatings = {};
+  try { const r = await fetch('bt_ratings.json'); Object.assign(btRatings, await r.json()); } catch {}
 
   let benchLog = [], arenaLog = [];
   try { const r = await fetch('match_log.json'); benchLog = await r.json(); } catch {}
@@ -2257,11 +2359,17 @@ function renderSummary(show) {
   const modelParts = Object.entries(mgc).map(([m,s]) =>
     `<div><div class="s-val" style="color:${gc(m)}">${(s*100).toFixed(0)}%</div><div class="s-lbl">${m} goal</div></div>`
   ).join('');
+  const pareto = r.pareto_efficiency != null ? `<div><div class="s-val">${(r.pareto_efficiency*100).toFixed(0)}%</div><div class="s-lbl">efficiency</div></div>` : '';
+  const seedStr = r.seed != null ? `<div><div class="s-val" style="font-size:0.65rem">${r.seed}</div><div class="s-lbl">seed</div></div>` : '';
+  const tempStr = r.temperature != null && r.temperature !== 1.0 ? `<div><div class="s-val">${r.temperature}</div><div class="s-lbl">temp</div></div>` : '';
   el.innerHTML = `
     <div><div class="s-val">${((r.avg_goal_completion||0)*100).toFixed(0)}%</div><div class="s-lbl">avg goal</div></div>
     ${modelParts}
+    ${pareto}
     <div><div class="s-val">${r.num_trades||0}</div><div class="s-lbl">trades</div></div>
-    <div><div class="s-val">${(r.elapsed_seconds||0).toFixed(1)}s</div><div class="s-lbl">time</div></div>`;
+    <div><div class="s-val">${(r.elapsed_seconds||0).toFixed(1)}s</div><div class="s-lbl">time</div></div>
+    ${tempStr}
+    ${seedStr}`;
 }
 
 // ============================================================
@@ -2294,8 +2402,12 @@ function renderLeaderboard() {
   }
 
   const avg = a => a.reduce((x,y) => x+y, 0) / a.length;
+  const stddev = a => { const m = avg(a); return Math.sqrt(a.reduce((s,x) => s + (x-m)**2, 0) / Math.max(a.length - 1, 1)); };
+  const ci95 = a => a.length > 1 ? 1.96 * stddev(a) / Math.sqrt(a.length) : 0;
   const rows = Object.entries(s).map(([m,v]) => ({
-    m, elo: eloRatings[m] || 1500, sc: avg(v.scores), tr: avg(v.trades),
+    m, elo: eloRatings[m] || 1500, bt: (btRatings && btRatings[m]) || null,
+    sc: avg(v.scores), sd: stddev(v.scores),
+    ci: ci95(v.scores), tr: avg(v.trades),
     inv: avg(v.invalids)*100, n: v.scores.length, ...wld(m)
   })).sort((a,b) => b.elo - a.elo);
 
@@ -2307,17 +2419,23 @@ function renderLeaderboard() {
 
   const hasStrategies = rows.some(r => r.m.includes(':'));
   const stratHeader = hasStrategies ? '<th>strategy</th><th>model</th>' : '<th>contestant</th>';
-  el.innerHTML = `<thead><tr>${stratHeader}<th class="r">elo</th><th class="r">W-L-D</th><th class="r">goal %</th><th class="r">invalid %</th><th class="r">matches</th></tr></thead>
+  const hasBT = rows.some(r => r.bt !== null);
+  const btHeader = hasBT ? '<th class="r">BT</th>' : '';
+  el.innerHTML = `<thead><tr>${stratHeader}<th class="r">elo</th>${btHeader}<th class="r">W-L-D</th><th class="r">goal %</th><th class="r">95% CI</th><th class="r">invalid %</th><th class="r">runs</th></tr></thead>
   <tbody>${rows.map(r => {
     const p = parseContestant(r.m);
     const nameCell = hasStrategies
       ? `<td><span class="tag" style="background:${gc(r.m)}18;color:${gc(r.m)}">${p.strategy}</span></td><td><span class="tag" style="background:${gc(p.model)}18;color:${gc(p.model)}">${p.model}</span></td>`
       : `<td><span class="tag" style="background:${gc(r.m)}18;color:${gc(r.m)}">${r.m}</span></td>`;
+    const ciStr = r.n > 1 ? `\u00b1${(r.ci*100).toFixed(1)}%` : 'n/a';
+    const btCell = hasBT ? `<td class="r" style="color:var(--text3);font-size:0.85rem">${r.bt ? Math.round(r.bt) : '-'}</td>` : '';
     return `<tr>
     ${nameCell}
     <td class="r" style="font-weight:600">${Math.round(r.elo)}</td>
+    ${btCell}
     <td class="r">${r.w}-${r.l}-${r.d}</td>
     <td class="r">${(r.sc*100).toFixed(1)}%</td>
+    <td class="r" style="color:var(--text3);font-size:0.8rem">${ciStr}</td>
     <td class="r">${r.inv.toFixed(1)}%</td>
     <td class="r">${r.n}</td></tr>`;
   }).join('')}</tbody>`;
@@ -2599,7 +2717,7 @@ function updateSuiteInfo() {
   const val = document.getElementById('suiteModels').value.trim();
   const models = val.split(',').map(m => m.trim()).filter(m => m);
   const n = models.length || 1;
-  const totalRuns = 4 * 3 * n;
+  const totalRuns = 4 * 10 * n;
   const modelStr = models.join(', ') || 'model';
   document.getElementById('suiteInfo').textContent =
     `Runs ${modelStr} vs haiku anchor across 4 scenarios (${totalRuns} runs total)`;
@@ -2646,6 +2764,7 @@ function launchAdvanced() {
     anchor: document.getElementById('advMode').value === 'benchmark'
       ? (document.getElementById('advAnchor').value || 'haiku')
       : null,
+    temperature: parseFloat(document.getElementById('advTemperature').value) || 1.0,
   }, document.getElementById('launchAdvBtn'));
 }
 

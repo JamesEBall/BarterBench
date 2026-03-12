@@ -13,7 +13,7 @@ K_FACTOR = 32
 
 
 @contextmanager
-def _file_lock(path):
+def file_lock(path):
     """Acquire an exclusive file lock for atomic read-modify-write."""
     path.parent.mkdir(parents=True, exist_ok=True)
     lock_path = Path(str(path) + ".lock")
@@ -54,6 +54,9 @@ def determine_match_result(model_goal_completion):
     """
     models = list(model_goal_completion.keys())
     if len(models) != 2:
+        if len(models) > 2:
+            import sys
+            print(f"[elo] Skipping ELO update: {len(models)} models in match (need exactly 2). Models: {models}", file=sys.stderr)
         return None
 
     a, b = models[0], models[1]
@@ -114,7 +117,7 @@ def record_match(run_entry, key_field="model_goal_completion"):
     model_a, model_b, score_a = result
 
     # Atomic update of ELO ratings
-    with _file_lock(ELO_FILE):
+    with file_lock(ELO_FILE):
         ratings = load_ratings()
         old_a = ratings.get(model_a, DEFAULT_RATING)
         old_b = ratings.get(model_b, DEFAULT_RATING)
@@ -144,7 +147,7 @@ def record_match(run_entry, key_field="model_goal_completion"):
     }
 
     # Atomic append to match log
-    with _file_lock(MATCH_LOG):
+    with file_lock(MATCH_LOG):
         log = load_match_log()
         log.append(match)
         save_match_log(log)
