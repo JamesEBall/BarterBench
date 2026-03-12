@@ -171,10 +171,7 @@ def run_single(scenario_name, scenario, model_config, model_config_str, run_id, 
         result["scenario_data"] = scenario
         metrics = compute_metrics(result)
 
-        clean_history = []
-        for h in result.get("history", []):
-            ch = {k: v for k, v in h.items() if k != "reasoning"}
-            clean_history.append(ch)
+        clean_history = list(result.get("history", []))
 
         entry = {
             "run_id": run_id,
@@ -356,9 +353,16 @@ def main():
     parser.add_argument("--clear", action="store_true",
                         help="Clear previous results and ELO ratings before running")
     parser.add_argument("--list", action="store_true",
-                        help="List available marketplace scenarios")
+                        help="List available marketplace scenarios and strategies")
     parser.add_argument("--elo", action="store_true",
                         help="Show current ELO leaderboard")
+    # Arena mode
+    parser.add_argument("--arena", action="store_true",
+                        help="Arena mode: pit prompt strategies against each other")
+    parser.add_argument("--strategies", type=str, default=None,
+                        help="Strategies to compete: 'aggressive,cooperative' or omit for all")
+    parser.add_argument("--submit", nargs=2, metavar=("NAME", "PROMPT"),
+                        help="Submit a new strategy: --submit 'my_strat' 'Your prompt here'")
     args = parser.parse_args()
 
     if args.serve:
@@ -367,6 +371,13 @@ def main():
 
     if args.elo:
         print_elo_leaderboard()
+        from .arena.runner import print_arena_leaderboard
+        print_arena_leaderboard()
+        return
+
+    if args.submit:
+        from .arena.runner import submit_strategy
+        submit_strategy(args.submit[0], args.submit[1])
         return
 
     if args.list:
@@ -377,24 +388,53 @@ def main():
             scarcity = scenario.get("scarcity", {})
             scarce_items = ", ".join(f"{k} ({v['ratio']:.0%} supply)" for k, v in scarcity.items()) if scarcity else "none"
             print(f"  {s:<20} {n} agents, {scenario.get('max_rounds', 10)} rounds — scarcity: {scarce_items}")
+
+        from .arena.runner import list_strategies
+        strats = list_strategies()
+        if strats:
+            print(f"\nAvailable strategies ({len(strats)}):")
+            for s in strats:
+                prompt_preview = s["prompt"][:60].replace("\n", " ") + "..." if len(s["prompt"]) > 60 else s["prompt"].replace("\n", " ")
+                print(f"  {s['id']:<20} by {s.get('author', '?'):<12} model={s.get('model', 'haiku'):<8} {prompt_preview}")
         return
 
     if args.clear:
         if RESULTS_FILE.exists():
             RESULTS_FILE.unlink()
         reset_ratings()
+        from .arena.runner import reset_arena
+        reset_arena()
         print("Cleared previous results and ELO ratings.")
+
+    # ---- Arena mode ----
+    if args.arena:
+        from .arena.runner import run_arena
+        scenario = args.eval or "all"
+        strat_names = None
+        if args.strategies:
+            strat_names = [s.strip() for s in args.strategies.split(",")]
+        # Parse models for cross-model arena
+        models = None
+        if args.models:
+            models = [m.strip().split(":")[0] for m in args.models.split(",")]
+        run_arena(strat_names, scenario, args.runs, args.verbose, models=models)
+        return
 
     if not args.eval:
         print("BarterBench: competitive marketplace benchmark with ELO ratings")
         print()
-        print("Usage:")
+        print("Benchmark mode (compare models):")
         print("  python3 -m barter_eval --eval <scenario> --models <config>")
         print("  python3 -m barter_eval --eval all --models haiku,opus --runs 3")
         print()
+        print("Arena mode (compare prompt strategies across models):")
+        print("  python3 -m barter_eval --arena --eval all --runs 3")
+        print("  python3 -m barter_eval --arena --models haiku,sonnet,opus --eval all")
+        print("  python3 -m barter_eval --submit 'my_strat' 'Trade aggressively'")
+        print()
         print("Other:")
         print("  python3 -m barter_eval --elo      # View ELO ratings")
-        print("  python3 -m barter_eval --list     # List scenarios")
+        print("  python3 -m barter_eval --list     # List scenarios & strategies")
         print("  python3 -m barter_eval --serve    # Dashboard")
         return
 

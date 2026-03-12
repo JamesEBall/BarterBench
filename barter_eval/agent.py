@@ -73,7 +73,7 @@ MARKETPLACE_TOOLS = [
 ]
 
 
-def _build_marketplace_context(agent_idx, inventory, target, order_book, recent_trades, round_num, max_rounds):
+def _build_marketplace_context(agent_idx, inventory, target, order_book, recent_trades, round_num, max_rounds, strategy_prompt=None):
     """Build the system prompt for a marketplace agent."""
     # Goal completion so far
     completion_parts = []
@@ -96,6 +96,11 @@ def _build_marketplace_context(agent_idx, inventory, target, order_book, recent_
         f"Your target inventory:  {json.dumps(target)}",
         f"Goal progress: {', '.join(completion_parts) if completion_parts else 'No targets'}",
     ]
+
+    if strategy_prompt:
+        lines.append("")
+        lines.append("## Your Strategy")
+        lines.append(strategy_prompt)
 
     lines.extend([
         "",
@@ -164,9 +169,12 @@ def _parse_json_response(text):
 class MarketAgent:
     """Marketplace agent that calls Claude via API or CLI."""
 
-    def __init__(self, model_name: str, agent_idx: int, backend: str = "auto"):
+    def __init__(self, model_name: str, agent_idx: int, backend: str = "auto",
+                 strategy_id: str = None, strategy_prompt: str = None):
         self.model_name = model_name
         self.agent_idx = agent_idx
+        self.strategy_id = strategy_id
+        self.strategy_prompt = strategy_prompt
         self.total_input_tokens = 0
         self.total_output_tokens = 0
 
@@ -182,6 +190,11 @@ class MarketAgent:
         else:
             self.cli_model = CLI_MODEL_MAP.get(model_name, model_name)
 
+    @property
+    def contestant_name(self):
+        """Return the name used for scoring — strategy_id in arena mode, model_name otherwise."""
+        return self.strategy_id if self.strategy_id else self.model_name
+
     def take_turn(self, inventory, target, order_book, recent_trades, round_num, max_rounds):
         if self.backend == "api":
             return self._turn_api(inventory, target, order_book, recent_trades, round_num, max_rounds)
@@ -192,6 +205,7 @@ class MarketAgent:
         import anthropic
         context = _build_marketplace_context(
             self.agent_idx, inventory, target, order_book, recent_trades, round_num, max_rounds,
+            strategy_prompt=self.strategy_prompt,
         )
 
         for attempt in range(3):
@@ -237,6 +251,7 @@ class MarketAgent:
     def _turn_cli(self, inventory, target, order_book, recent_trades, round_num, max_rounds):
         context = _build_marketplace_context(
             self.agent_idx, inventory, target, order_book, recent_trades, round_num, max_rounds,
+            strategy_prompt=self.strategy_prompt,
         )
         prompt = f"{context}\n\n{JSON_SCHEMA_INSTRUCTION}\n\nIt's your turn. Choose your action."
 

@@ -61,6 +61,20 @@ def compute_metrics(result):
     if scarce_capture:
         metrics["scarce_capture"] = scarce_capture
 
+    # Strategy-based scoring (arena mode)
+    has_strategies = any(ar.get("strategy_id") for ar in agent_results)
+    if has_strategies:
+        strategy_scores = {}
+        for ar in agent_results:
+            sid = ar.get("strategy_id", ar["model"])
+            if sid not in strategy_scores:
+                strategy_scores[sid] = []
+            strategy_scores[sid].append(ar["goal_completion"])
+        strategy_avg = {}
+        for sid, scores in strategy_scores.items():
+            strategy_avg[sid] = round(sum(scores) / len(scores), 4) if scores else 0.0
+        metrics["strategy_goal_completion"] = strategy_avg
+
     return metrics
 
 
