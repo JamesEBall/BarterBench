@@ -1419,6 +1419,8 @@ function updateLiveBadges() {
   controls.querySelectorAll('.live-btn').forEach(b => b.remove());
   // Add one per live match
   for (const [scenario, data] of Object.entries(liveMatches)) {
+    const isCompleted = data.status === 'completed';
+    if (isCompleted) continue; // Don't show badge for completed matches
     const btn = document.createElement('button');
     btn.className = 'ctrl-btn live-btn';
     const isActive = activeLive === scenario && currentRun && currentRun._live;

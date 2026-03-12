@@ -67,7 +67,7 @@ class MarketEngine:
             if self._has_items(o["poster"], o["give"])
         ]
 
-    def _write_live(self, initial_inventories, start_time):
+    def _write_live(self, initial_inventories, start_time, status="running"):
         """Write current match state to live_<scenario>.json for dashboard streaming."""
         try:
             live_dir = Path(__file__).parent / "arena"
@@ -88,7 +88,7 @@ class MarketEngine:
                 agent_results.append(ar)
 
             live = {
-                "status": "running",
+                "status": status,
                 "scenario": self.scenario.get("name", ""),
                 "elapsed_seconds": round(time.time() - start_time, 1),
                 "num_agents": self.num_agents,
@@ -242,6 +242,9 @@ class MarketEngine:
             all_complete = all(self.goal_completion(i) >= 1.0 for i in range(self.num_agents))
             if all_complete:
                 break
+
+        # Mark live file as completed
+        self._write_live(initial_inventories, start_time, status="completed")
 
         elapsed = time.time() - start_time
 
