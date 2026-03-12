@@ -1,0 +1,17 @@
+{
+  "name": "gold_rush",
+  "description": "6 agents, 3 items. Gold is scarce: 4 agents want 12 total but only 6 exist. Tests speed and competitive bidding.",
+  "difficulty": "easy",
+  "max_rounds": 8,
+  "agents": [
+    {"role": "Trader 0", "inventory": {"wheat": 5, "tools": 0, "gold": 0}, "target": {"gold": 3, "tools": 2}},
+    {"role": "Trader 1", "inventory": {"wheat": 5, "tools": 0, "gold": 0}, "target": {"gold": 3, "tools": 2}},
+    {"role": "Trader 2", "inventory": {"tools": 5, "wheat": 0, "gold": 0}, "target": {"gold": 3, "wheat": 2}},
+    {"role": "Trader 3", "inventory": {"tools": 5, "wheat": 0, "gold": 0}, "target": {"gold": 3, "wheat": 2}},
+    {"role": "Trader 4", "inventory": {"gold": 3, "wheat": 0, "tools": 0}, "target": {"wheat": 2, "tools": 1}},
+    {"role": "Trader 5", "inventory": {"gold": 3, "wheat": 0, "tools": 0}, "target": {"wheat": 2, "tools": 1}}
+  ],
+  "scarcity": {
+    "gold": {"supply": 6, "demand": 12, "ratio": 0.5}
+  }
+}

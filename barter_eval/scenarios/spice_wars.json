@@ -1,0 +1,22 @@
+{
+  "name": "spice_wars",
+  "description": "10 agents, 5 items. Gold and gems both scarce. Tests multi-front competition, Jevons double coincidence, multi-hop reasoning.",
+  "difficulty": "hard",
+  "max_rounds": 12,
+  "agents": [
+    {"role": "Trader 0", "inventory": {"silk": 5, "spice": 0, "gold": 0, "gems": 0, "tea": 0}, "target": {"gold": 3, "tea": 2}},
+    {"role": "Trader 1", "inventory": {"silk": 5, "spice": 0, "gold": 0, "gems": 0, "tea": 0}, "target": {"gems": 3, "spice": 2}},
+    {"role": "Trader 2", "inventory": {"spice": 5, "silk": 0, "gold": 0, "gems": 0, "tea": 0}, "target": {"gold": 3, "silk": 2}},
+    {"role": "Trader 3", "inventory": {"spice": 5, "silk": 0, "gold": 0, "gems": 0, "tea": 0}, "target": {"gems": 3, "tea": 2}},
+    {"role": "Trader 4", "inventory": {"gold": 5, "silk": 0, "spice": 0, "gems": 0, "tea": 0}, "target": {"silk": 3, "gems": 2}},
+    {"role": "Trader 5", "inventory": {"gold": 5, "silk": 0, "spice": 0, "gems": 0, "tea": 0}, "target": {"spice": 2, "gems": 3}},
+    {"role": "Trader 6", "inventory": {"gems": 5, "silk": 0, "spice": 0, "gold": 0, "tea": 0}, "target": {"tea": 3, "gold": 2}},
+    {"role": "Trader 7", "inventory": {"gems": 5, "silk": 0, "spice": 0, "gold": 0, "tea": 0}, "target": {"spice": 3, "gold": 2}},
+    {"role": "Trader 8", "inventory": {"tea": 5, "silk": 0, "spice": 0, "gold": 0, "gems": 0}, "target": {"gold": 3, "silk": 2}},
+    {"role": "Trader 9", "inventory": {"tea": 5, "silk": 0, "spice": 0, "gold": 0, "gems": 0}, "target": {"gems": 3, "spice": 2}}
+  ],
+  "scarcity": {
+    "gold": {"supply": 10, "demand": 13, "ratio": 0.77},
+    "gems": {"supply": 10, "demand": 14, "ratio": 0.71}
+  }
+}

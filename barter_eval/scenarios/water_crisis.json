@@ -1,0 +1,19 @@
+{
+  "name": "water_crisis",
+  "description": "8 agents, 4 items. Water extremely scarce: demand 2.25x supply. Tests bargaining under extreme scarcity.",
+  "difficulty": "medium",
+  "max_rounds": 10,
+  "agents": [
+    {"role": "Trader 0", "inventory": {"wheat": 5, "wood": 0, "stone": 0, "water": 0}, "target": {"wood": 2, "water": 3}},
+    {"role": "Trader 1", "inventory": {"wheat": 5, "wood": 0, "stone": 0, "water": 0}, "target": {"stone": 2, "water": 3}},
+    {"role": "Trader 2", "inventory": {"wood": 5, "wheat": 0, "stone": 0, "water": 0}, "target": {"wheat": 2, "water": 3}},
+    {"role": "Trader 3", "inventory": {"wood": 5, "wheat": 0, "stone": 0, "water": 0}, "target": {"stone": 2, "water": 3}},
+    {"role": "Trader 4", "inventory": {"stone": 5, "wheat": 0, "wood": 0, "water": 0}, "target": {"wheat": 2, "water": 3}},
+    {"role": "Trader 5", "inventory": {"stone": 5, "wheat": 0, "wood": 0, "water": 0}, "target": {"wood": 2, "water": 3}},
+    {"role": "Trader 6", "inventory": {"water": 4, "wheat": 0, "wood": 0, "stone": 0}, "target": {"wheat": 2, "wood": 2}},
+    {"role": "Trader 7", "inventory": {"water": 4, "wheat": 0, "wood": 0, "stone": 0}, "target": {"stone": 2, "wood": 2}}
+  ],
+  "scarcity": {
+    "water": {"supply": 8, "demand": 18, "ratio": 0.44}
+  }
+}
