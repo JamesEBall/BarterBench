@@ -185,36 +185,30 @@ def record_arena_match(entry):
 
 # ---- Run a single arena match ----
 
-def run_arena_match(scenario_name, scenario, strat_a, strat_b, run_id, verbose, model_override=None):
-    """Run a single arena match between two strategies."""
+def run_arena_match(scenario_name, scenario, strat_a, strat_b, run_id, verbose,
+                    model_a=None, model_b=None, label_a=None, label_b=None):
+    """Run a single arena match between two contestants."""
     num_agents = len(scenario["agents"])
     half_a, half_b = auto_model_config(scenario)
 
-    # Contestant label includes model if running cross-model
-    label_a = strat_a["id"]
-    label_b = strat_b["id"]
-    if model_override:
-        model_a = model_override.get(strat_a["id"], strat_a.get("model", "haiku"))
-        model_b = model_override.get(strat_b["id"], strat_b.get("model", "haiku"))
-        if model_a != model_b:
-            label_a = f"{strat_a['id']}:{model_a}"
-            label_b = f"{strat_b['id']}:{model_b}"
+    model_a = model_a or strat_a.get("model", "haiku")
+    model_b = model_b or strat_b.get("model", "haiku")
+    label_a = label_a or strat_a["id"]
+    label_b = label_b or strat_b["id"]
 
-    assignments = [strat_a["id"]] * half_a + [strat_b["id"]] * half_b
+    # Assign agents: use labels as strategy_id so scoring groups correctly
+    assignments = [label_a] * half_a + [label_b] * half_b
     random.shuffle(assignments)
 
     agents = []
     for i in range(num_agents):
-        sid = assignments[i]
-        strat = strat_a if sid == strat_a["id"] else strat_b
-        if model_override:
-            model = model_override.get(sid, strat.get("model", "haiku"))
-        else:
-            model = strat.get("model", "haiku")
+        is_a = assignments[i] == label_a
+        strat = strat_a if is_a else strat_b
+        model = model_a if is_a else model_b
         agents.append(MarketAgent(
             model_name=model,
             agent_idx=i,
-            strategy_id=sid,
+            strategy_id=assignments[i],
             strategy_prompt=strat["prompt"],
         ))
 
@@ -323,24 +317,26 @@ def run_arena(strategy_names, scenario_name, runs_per_matchup, verbose, models=N
     else:
         scenarios = [scenario_name]
 
-    # If models provided, create (strategy, model) pairs
+    # Build contestant list: each contestant is (strategy, model, label)
     if models and len(models) > 1:
-        # Cross-model arena: each strategy x each model
-        pairs = []
-        combos = list(product(strategies, models))
-        for (sa, ma), (sb, mb) in combinations(combos, 2):
-            model_override = {sa["id"]: ma, sb["id"]: mb}
-            pairs.append((sa, sb, model_override))
+        # Cross-model arena: each strategy x each model = distinct contestants
+        contestants = []
+        for strat, model in product(strategies, models):
+            label = f"{strat['id']}:{model}"
+            contestants.append((strat, model, label))
+
+        pairs = list(combinations(contestants, 2))
         total_matches = len(pairs) * len(scenarios) * runs_per_matchup
         print(f"Barter Arena (cross-model)")
         print(f"  Strategies: {', '.join(s['id'] for s in strategies)}")
         print(f"  Models: {', '.join(models)}")
-        print(f"  Contestants: {len(combos)} (strategy x model)")
+        print(f"  Contestants: {len(contestants)} (strategy x model)")
         print(f"  Scenarios: {', '.join(scenarios)}")
         print(f"  Total matches: {total_matches}")
     else:
-        # Same-model arena
-        pairs = [(sa, sb, None) for sa, sb in combinations(strategies, 2)]
+        # Same-model arena: contestant = strategy (all use default model)
+        contestants_a = [(s, s.get("model", "haiku"), s["id"]) for s in strategies]
+        pairs = list(combinations(contestants_a, 2))
         total_matches = len(pairs) * len(scenarios) * runs_per_matchup
         print(f"Barter Arena")
         print(f"  Strategies: {', '.join(s['id'] for s in strategies)}")
@@ -356,13 +352,14 @@ def run_arena(strategy_names, scenario_name, runs_per_matchup, verbose, models=N
         scenario = load_scenario(scenario_n)
         print(f"--- {scenario_n} ({len(scenario['agents'])} agents, {scenario.get('max_rounds', 10)} rounds) ---")
 
-        for strat_a, strat_b, model_override in pairs:
+        for (strat_a, model_a, label_a), (strat_b, model_b, label_b) in pairs:
             for run_num in range(runs_per_matchup):
                 match_num += 1
                 run_id = run_offset + match_num
                 print(f"\n  Match {match_num}/{total_matches}")
 
-                entry = run_arena_match(scenario_n, scenario, strat_a, strat_b, run_id, verbose, model_override)
+                entry = run_arena_match(scenario_n, scenario, strat_a, strat_b, run_id, verbose,
+                                        model_a=model_a, model_b=model_b, label_a=label_a, label_b=label_b)
 
                 # Atomic append to shared results file
                 with _file_lock(ARENA_RESULTS):

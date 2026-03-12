@@ -97,6 +97,7 @@ class MarketEngine:
                     "contestant": self.agents[agent_idx].contestant_name,
                     "action": action,
                     "message": turn.get("message", ""),
+                    "reasoning": turn.get("reasoning", ""),
                 }
 
                 if action == "post_offer":
