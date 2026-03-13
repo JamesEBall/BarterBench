@@ -516,6 +516,17 @@ python3 eval.py --generate --gen-agents 8 --gen-items 5 --gen-scarce 2 --gen-see
 python3 eval.py --generate --gen-agents 6 --gen-items 4 --models haiku:3,sonnet:3 --runs 3
 ```
 
+### Checkpoint / Resume
+
+Long-running evaluations are automatically checkpointed after every completed round. If a run is interrupted (power loss, Ctrl-C, crash), resume from the last checkpoint:
+
+```bash
+python3 eval.py --resume                     # Resume from checkpoint.json (default)
+python3 eval.py --resume path/to/checkpoint.json  # Resume from specific file
+```
+
+The checkpoint saves full engine state (inventories, order book, trades, auctions) and per-agent conversation history, so resumed runs continue seamlessly.
+
 ### Other Commands
 
 ```bash
@@ -558,7 +569,7 @@ The gossip system means agents must decide on every turn: **broadcast to the mar
 ```
 ├── eval.py           # CLI entry point, tournament orchestration
 ├── agent.py          # LLM agent wrapper (API + CLI backends, stateful, auction support)
-├── engine.py         # N-agent marketplace engine with order book + auction mechanics
+├── engine.py         # N-agent marketplace engine with order book, auctions, checkpoint/resume
 ├── scoring.py        # Comprehensive metrics: goal completion, collusion, social engineering,
 │                     #   welfare, Gini, deception, cost efficiency, capability decomposition
 ├── solvability.py    # Greedy upper bound on achievable welfare for scenario analysis

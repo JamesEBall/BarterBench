@@ -280,6 +280,87 @@ class MarketEngine:
             if a["status"] == "open":
                 a["status"] = "expired"
 
+    def _write_checkpoint(self, round_num, initial_inventories, elapsed_so_far):
+        """Write full resumable state to checkpoint.json after each completed round."""
+        try:
+            checkpoint = {
+                "round_num": round_num + 1,  # next round to run
+                "scenario": self.scenario,
+                "inventories": [dict(inv) for inv in self.inventories],
+                "initial_inventories": initial_inventories,
+                "targets": [dict(t) for t in self.targets],
+                "order_book": copy.deepcopy(self.order_book),
+                "next_offer_id": self.next_offer_id,
+                "active_auctions": copy.deepcopy(self.active_auctions),
+                "next_auction_id": self.next_auction_id,
+                "trades": self.trades,
+                "history": self.history,
+                "simultaneous": self.simultaneous,
+                "run_id": self.run_id,
+                "elapsed_seconds": round(elapsed_so_far, 2),
+                "auction_enabled": self.auction_enabled,
+                "model_assignments": [a.model_name for a in self.agents],
+                "agent_states": [a.get_state() for a in self.agents],
+            }
+            cp_file = Path(__file__).parent / "checkpoint.json"
+            import fcntl
+            with open(cp_file, "w") as f:
+                fcntl.flock(f, fcntl.LOCK_EX)
+                json.dump(checkpoint, f)
+                fcntl.flock(f, fcntl.LOCK_UN)
+        except Exception as e:
+            import sys
+            print(f"[warn] checkpoint write failed: {e}", file=sys.stderr)
+
+    @classmethod
+    def from_checkpoint(cls, path="checkpoint.json"):
+        """Reconstruct engine + agents from a checkpoint file."""
+        from agent import MarketAgent
+        cp_path = Path(path) if Path(path).is_absolute() else Path(__file__).parent / path
+        with open(cp_path) as f:
+            cp = json.load(f)
+
+        scenario = cp["scenario"]
+        model_assignments = cp["model_assignments"]
+        agent_states = cp["agent_states"]
+        auction_enabled = cp.get("auction_enabled", False)
+
+        # Reconstruct agents
+        agents = []
+        for i, model_name in enumerate(model_assignments):
+            strategy_id = scenario["agents"][i].get("strategy_id") if i < len(scenario.get("agents", [])) else None
+            strategy_prompt = scenario["agents"][i].get("strategy_prompt") if i < len(scenario.get("agents", [])) else None
+            a = MarketAgent(model_name, i, auction_enabled=auction_enabled,
+                            strategy_id=strategy_id, strategy_prompt=strategy_prompt)
+            a.set_state(agent_states[i])
+            agents.append(a)
+
+        # Reconstruct engine (bypass __init__ scenario parsing)
+        engine = cls.__new__(cls)
+        engine.scenario = scenario
+        engine.agents = agents
+        engine.num_agents = len(agents)
+        engine.max_rounds = scenario.get("max_rounds", 10)
+        engine.inventories = [dict(inv) for inv in cp["inventories"]]
+        engine.targets = [dict(t) for t in cp["targets"]]
+        engine.order_book = cp["order_book"]
+        engine.next_offer_id = cp["next_offer_id"]
+        engine.history = cp["history"]
+        engine.trades = cp["trades"]
+        engine.round_log = []
+        engine.simultaneous = cp.get("simultaneous", False)
+        engine.run_id = cp.get("run_id")
+        engine.live_updates = True
+        engine.auction_enabled = auction_enabled
+        engine.active_auctions = cp.get("active_auctions", [])
+        engine.next_auction_id = cp.get("next_auction_id", 1)
+
+        start_round = cp["round_num"]
+        initial_inventories = cp["initial_inventories"]
+        elapsed_so_far = cp.get("elapsed_seconds", 0)
+
+        return engine, start_round, initial_inventories, elapsed_so_far
+
     def _write_live(self, initial_inventories, start_time, status="running"):
         """Write current match state to live_match.json for dashboard streaming.
 
@@ -629,19 +710,25 @@ class MarketEngine:
 
         return round_actions
 
-    def run(self):
+    def run(self, start_round=0, initial_inventories=None, elapsed_offset=0):
         start_time = time.time()
-        initial_inventories = [dict(inv) for inv in self.inventories]
+        if initial_inventories is None:
+            initial_inventories = [dict(inv) for inv in self.inventories]
 
-        for round_num in range(self.max_rounds):
+        for round_num in range(start_round, self.max_rounds):
             # Randomize turn order each round
             turn_order = list(range(self.num_agents))
             random.shuffle(turn_order)
 
+            effective_start = start_time - elapsed_offset
             if self.simultaneous:
-                self._run_simultaneous_round(round_num, turn_order, initial_inventories, start_time)
+                self._run_simultaneous_round(round_num, turn_order, initial_inventories, effective_start)
             else:
-                self._run_sequential_round(round_num, turn_order, initial_inventories, start_time)
+                self._run_sequential_round(round_num, turn_order, initial_inventories, effective_start)
+
+            # Checkpoint after each completed round
+            elapsed = time.time() - start_time + elapsed_offset
+            self._write_checkpoint(round_num, initial_inventories, elapsed)
 
             # Check if all agents have reached their goals
             all_complete = all(self.goal_completion(i) >= 1.0 for i in range(self.num_agents))
@@ -653,10 +740,11 @@ class MarketEngine:
             self._auto_close_auctions()
 
         # Write final status so dashboard knows this run is done
+        effective_start = start_time - elapsed_offset
         if self.live_updates:
-            self._write_live(initial_inventories, start_time, status="complete")
+            self._write_live(initial_inventories, effective_start, status="complete")
 
-        elapsed = time.time() - start_time
+        elapsed = time.time() - start_time + elapsed_offset
 
         # Compute per-agent results
         agent_results = []
