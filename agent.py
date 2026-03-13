@@ -1,10 +1,17 @@
-"""Agent wrapper for marketplace — supports Anthropic API (with key) and claude CLI (OAuth)."""
+"""Agent wrapper for marketplace — supports Anthropic API, OpenRouter (OpenAI-compatible), and claude CLI."""
 
 import json
 import os
 import re
 import subprocess
 import time
+
+# Load .env if present
+try:
+    from dotenv import load_dotenv
+    load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
+except ImportError:
+    pass
 
 MODEL_MAP = {
     "haiku": "claude-haiku-4-5-20251001",
@@ -16,6 +23,37 @@ CLI_MODEL_MAP = {
     "haiku": "haiku",
     "sonnet": "sonnet",
     "opus": "opus",
+}
+
+# OpenRouter model aliases — short names for convenience
+# All free-tier models with tool calling support as of Mar 2026
+OPENROUTER_MODEL_MAP = {
+    # --- Frontier free models ---
+    "hunter":           "openrouter/hunter-alpha",              # 1T params, 1M ctx
+    "hunter-alpha":     "openrouter/hunter-alpha",
+    "healer":           "openrouter/healer-alpha",              # 256K ctx
+    "healer-alpha":     "openrouter/healer-alpha",
+    # --- Big open-weight models ---
+    "nemotron-120b":    "nvidia/nemotron-3-super-120b-a12b:free",  # 120B MoE, 256K ctx
+    "gpt-oss-120b":    "openai/gpt-oss-120b:free",             # 120B, 128K ctx
+    "qwen3-coder":     "qwen/qwen3-coder:free",                # 480B MoE, 256K ctx
+    "llama-70b":       "meta-llama/llama-3.3-70b-instruct:free",  # 70B, 128K ctx
+    "trinity-large":   "arcee-ai/trinity-large-preview:free",  # MoE, 131K ctx
+    # --- Mid-size models ---
+    "step-flash":      "stepfun/step-3.5-flash:free",          # 196B MoE, 256K ctx
+    "qwen3-80b":       "qwen/qwen3-next-80b-a3b-istruct:free", # 80B MoE, 256K ctx
+    "nemotron-30b":    "nvidia/nemotron-3-nano-30b-a3b:free",  # 30B MoE, 256K ctx
+    "gemma-27b":       "google/gemma-3-27b-it:free",           # 27B, 128K ctx
+    "trinity-mini":    "arcee-ai/trinity-mini:free",           # 26B MoE, 128K ctx
+    "mistral-small":   "mistralai/mistral-small-3.1-24b-instruct:free",  # 24B, 128K ctx
+    "gpt-oss-20b":     "openai/gpt-oss-20b:free",             # 20B, 128K ctx
+    "glm-4.5":         "z-ai/glm-4.5-air:free",               # 128K ctx
+    # --- Paid models (need OPENROUTER_API_KEY with credits) ---
+    "gpt4o":           "openai/gpt-4o",
+    "gpt4o-mini":      "openai/gpt-4o-mini",
+    "gemini-pro":      "google/gemini-2.5-pro-preview",
+    "gemini-flash":    "google/gemini-2.5-flash-preview",
+    "deepseek":        "deepseek/deepseek-chat-v3-0324",
 }
 
 VALID_ACTIONS = {"post_offer", "accept_offer", "private_offer", "pass_turn",
@@ -219,6 +257,21 @@ def _build_marketplace_context(agent_idx, inventory, target, order_book, recent_
     return "\n".join(lines)
 
 
+def _anthropic_tools_to_openai(tools):
+    """Convert Anthropic tool format to OpenAI function-calling format."""
+    openai_tools = []
+    for t in tools:
+        openai_tools.append({
+            "type": "function",
+            "function": {
+                "name": t["name"],
+                "description": t["description"],
+                "parameters": t["input_schema"],
+            },
+        })
+    return openai_tools
+
+
 def _parse_json_response(text):
     """Extract JSON action from model text output."""
     json_match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', text)
@@ -283,12 +336,26 @@ class MarketAgent:
         self.conversation_history = []  # stateful: accumulate turns within a match (API)
         self.round_history = []  # stateful: (round, action_summary) tuples (CLI)
 
+        # Determine backend: openrouter for OR models, api for Anthropic API, cli fallback
+        is_openrouter = model_name in OPENROUTER_MODEL_MAP or model_name.startswith("openrouter/") or "/" in model_name
         if backend == "auto":
-            self.backend = "api" if os.environ.get("ANTHROPIC_API_KEY") else "cli"
+            if is_openrouter:
+                self.backend = "openrouter"
+            elif os.environ.get("ANTHROPIC_API_KEY"):
+                self.backend = "api"
+            else:
+                self.backend = "cli"
         else:
             self.backend = backend
 
-        if self.backend == "api":
+        if self.backend == "openrouter":
+            from openai import OpenAI
+            self.model = OPENROUTER_MODEL_MAP.get(model_name, model_name)
+            self.client = OpenAI(
+                base_url="https://openrouter.ai/api/v1",
+                api_key=os.environ.get("OPENROUTER_API_KEY", ""),
+            )
+        elif self.backend == "api":
             import anthropic
             self.model = MODEL_MAP.get(model_name, model_name)
             self.client = anthropic.Anthropic()
@@ -320,7 +387,9 @@ class MarketAgent:
         return self.strategy_id if self.strategy_id else self.model_name
 
     def take_turn(self, inventory, target, order_book, recent_trades, round_num, max_rounds, auctions=None):
-        if self.backend == "api":
+        if self.backend == "openrouter":
+            return self._turn_openrouter(inventory, target, order_book, recent_trades, round_num, max_rounds, auctions=auctions)
+        elif self.backend == "api":
             return self._turn_api(inventory, target, order_book, recent_trades, round_num, max_rounds, auctions=auctions)
         else:
             return self._turn_cli(inventory, target, order_book, recent_trades, round_num, max_rounds, auctions=auctions)
@@ -419,6 +488,141 @@ class MarketAgent:
             result["visible_to"] = tool_input["visible_to"]
         return result
 
+    def _turn_openrouter(self, inventory, target, order_book, recent_trades, round_num, max_rounds, auctions=None):
+        """OpenRouter backend — uses OpenAI-compatible API with tool calling."""
+        context = _build_marketplace_context(
+            self.agent_idx, inventory, target, order_book, recent_trades, round_num, max_rounds,
+            strategy_prompt=self.strategy_prompt,
+            auctions=auctions if self.auction_enabled else None,
+        )
+
+        # Build OpenAI-format tools
+        tools_anthropic = MARKETPLACE_TOOLS + (AUCTION_TOOLS if self.auction_enabled else [])
+        tools_openai = _anthropic_tools_to_openai(tools_anthropic)
+
+        # Build messages with conversation history
+        history_section = self._build_round_history_section()
+        messages = [{"role": "system", "content": f"{context}{history_section}"}]
+        messages.append({"role": "user", "content": f"{JSON_SCHEMA_INSTRUCTION}\n\nIt's your turn. Choose your action."})
+
+        response = None
+        for attempt in range(3):
+            try:
+                response = self.client.chat.completions.create(
+                    model=self.model,
+                    max_tokens=512,
+                    temperature=self.temperature,
+                    messages=messages,
+                    tools=tools_openai,
+                    tool_choice="required",
+                )
+                if response and response.choices:
+                    break
+                # Response came back empty — retry
+                if attempt < 2:
+                    time.sleep(1)
+            except Exception as e:
+                if attempt < 2:
+                    time.sleep(2 ** attempt)
+                else:
+                    # Final attempt: fall back to plain text (no tools)
+                    try:
+                        response = self.client.chat.completions.create(
+                            model=self.model,
+                            max_tokens=512,
+                            temperature=self.temperature,
+                            messages=messages,
+                        )
+                        text = (response.choices[0].message.content or "") if response and response.choices else ""
+                        if response and response.usage:
+                            self.total_input_tokens += response.usage.prompt_tokens
+                            self.total_output_tokens += response.usage.completion_tokens
+                        parsed = _parse_json_response(text)
+                        self._record_round_history(parsed, round_num)
+                        return parsed
+                    except Exception:
+                        return self._fallback_pass()
+
+        if not response or not response.choices:
+            return self._fallback_pass()
+
+        choice = response.choices[0]
+        if response.usage:
+            self.total_input_tokens += response.usage.prompt_tokens
+            self.total_output_tokens += response.usage.completion_tokens
+
+        reasoning = ""
+        tool_name = "pass_turn"
+        tool_input = {"message": ""}
+
+        msg = choice.message
+        if msg.content:
+            reasoning = msg.content
+        # Some models (hunter-alpha) return reasoning in a separate field
+        if hasattr(msg, 'reasoning') and msg.reasoning:
+            reasoning = msg.reasoning
+
+        # Check for tool calls (OpenAI format)
+        if msg.tool_calls and len(msg.tool_calls) > 0:
+            tc = msg.tool_calls[0]
+            tool_name = tc.function.name
+            try:
+                tool_input = json.loads(tc.function.arguments)
+            except json.JSONDecodeError:
+                tool_input = {"message": "Parse error"}
+        elif msg.content:
+            # No tool call — try to parse JSON from content
+            parsed = _parse_json_response(msg.content)
+            self._record_round_history(parsed, round_num)
+            return parsed
+
+        result = {
+            "action": tool_name if tool_name in VALID_ACTIONS else "pass_turn",
+            "give": tool_input.get("give", {}),
+            "want": tool_input.get("want", {}),
+            "offer_id": tool_input.get("offer_id"),
+            "target_agent": tool_input.get("target_agent"),
+            "message": tool_input.get("message", ""),
+            "reasoning": reasoning,
+        }
+        # Auction fields
+        for field in ("auction_id", "bid", "min_bid", "accepted_bid_idx", "reject_all", "visible_to"):
+            if tool_input.get(field) is not None:
+                result[field] = tool_input[field]
+
+        self._record_round_history(result, round_num)
+        return result
+
+    def _fallback_pass(self):
+        return {
+            "action": "pass_turn", "give": {}, "want": {}, "offer_id": None,
+            "message": "Agent failed to respond", "reasoning": "",
+        }
+
+    def _record_round_history(self, parsed, round_num):
+        """Record action summary for CLI/OpenRouter round history."""
+        action = parsed["action"]
+        if action == "post_offer":
+            summary = f"Posted offer: give {json.dumps(parsed['give'])} for {json.dumps(parsed['want'])}"
+        elif action == "private_offer":
+            summary = f"Sent private offer to Trader {parsed.get('target_agent')}: give {json.dumps(parsed['give'])} for {json.dumps(parsed['want'])}"
+        elif action == "accept_offer":
+            summary = f"Accepted offer #{parsed.get('offer_id')}"
+        elif action == "start_auction":
+            summary = f"Started auction selling {json.dumps(parsed['give'])}"
+        elif action == "submit_bid":
+            summary = f"Bid {json.dumps(parsed.get('bid', {}))} on auction #{parsed.get('auction_id')}"
+        elif action == "close_auction":
+            if parsed.get("reject_all"):
+                summary = f"Cancelled auction #{parsed.get('auction_id')}"
+            else:
+                summary = f"Closed auction #{parsed.get('auction_id')}, accepted bid #{parsed.get('accepted_bid_idx')}"
+        else:
+            summary = "Passed turn"
+        if parsed.get("message"):
+            summary += f" — \"{parsed['message'][:80]}\""
+        self.round_history.append((round_num + 1, summary))
+
     def _build_round_history_section(self):
         """Build a prompt section summarizing this agent's previous actions."""
         if not self.round_history:
@@ -450,28 +654,7 @@ class MarketAgent:
                 )
                 if result.returncode == 0 and result.stdout.strip():
                     parsed = _parse_json_response(result.stdout.strip())
-                    # Record action for future rounds
-                    action = parsed["action"]
-                    if action == "post_offer":
-                        summary = f"Posted offer: give {json.dumps(parsed['give'])} for {json.dumps(parsed['want'])}"
-                    elif action == "private_offer":
-                        summary = f"Sent private offer to Trader {parsed.get('target_agent')}: give {json.dumps(parsed['give'])} for {json.dumps(parsed['want'])}"
-                    elif action == "accept_offer":
-                        summary = f"Accepted offer #{parsed.get('offer_id')}"
-                    elif action == "start_auction":
-                        summary = f"Started auction selling {json.dumps(parsed['give'])}"
-                    elif action == "submit_bid":
-                        summary = f"Bid {json.dumps(parsed.get('bid', {}))} on auction #{parsed.get('auction_id')}"
-                    elif action == "close_auction":
-                        if parsed.get("reject_all"):
-                            summary = f"Cancelled auction #{parsed.get('auction_id')}"
-                        else:
-                            summary = f"Closed auction #{parsed.get('auction_id')}, accepted bid #{parsed.get('accepted_bid_idx')}"
-                    else:
-                        summary = "Passed turn"
-                    if parsed.get("message"):
-                        summary += f" — \"{parsed['message'][:80]}\""
-                    self.round_history.append((round_num + 1, summary))
+                    self._record_round_history(parsed, round_num)
                     return parsed
                 if attempt < 2:
                     time.sleep(1)
