@@ -3040,16 +3040,28 @@ function renderParamPanel() {
 // ============================================================
 let liveMatch = null;
 let liveStepCount = 0;
+let liveRunId = null;  // track which run_id we're watching
 
 async function pollLiveMatch() {
   try {
     const r = await fetch('live_match.json?t=' + Date.now());
-    if (!r.ok) { liveMatch = null; return; }
+    if (!r.ok) { liveMatch = null; liveRunId = null; return; }
     const data = await r.json();
-    if (!data || !data.history || !data.history.length) { liveMatch = null; return; }
+    if (!data || !data.history || !data.history.length) { liveMatch = null; liveRunId = null; return; }
 
-    const isNew = !liveMatch || data.scenario !== liveMatch.scenario;
+    // If we're locked onto a run and this data is from a different run, skip it
+    if (liveRunId !== null && data.run_id != null && data.run_id !== liveRunId) {
+      // Unless our tracked run completed, then accept the new one
+      if (liveMatch && liveMatch.status === 'complete') {
+        liveRunId = null; // release lock, accept new run
+      } else {
+        return; // ignore data from other parallel runs
+      }
+    }
+
+    const isNew = !liveMatch || data.run_id !== liveRunId;
     liveMatch = data;
+    if (data.run_id != null) liveRunId = data.run_id;
 
     // Build a run-like object from live data
     const liveRun = {

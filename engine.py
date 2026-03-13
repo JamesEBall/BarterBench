@@ -103,6 +103,7 @@ class MarketEngine:
 
             live = {
                 "status": status,
+                "run_id": self.run_id,
                 "scenario": self.scenario.get("name", ""),
                 "elapsed_seconds": round(time.time() - start_time, 1),
                 "num_agents": self.num_agents,
@@ -423,13 +424,9 @@ class MarketEngine:
             if all_complete:
                 break
 
-        # Remove live file when match ends
-        try:
-            live_file = Path(__file__).parent / "live_match.json"
-            if live_file.exists():
-                live_file.unlink()
-        except Exception:
-            pass
+        # Write final status so dashboard knows this run is done
+        if self.live_updates:
+            self._write_live(initial_inventories, start_time, status="complete")
 
         elapsed = time.time() - start_time
 

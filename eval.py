@@ -597,6 +597,41 @@ def _save_experiments(experiments):
             json.dump(experiments, f, indent=2)
 
 
+def _register_cli_experiment(mode, scenario, models, runs, simultaneous=False, parallel=1):
+    """Register a CLI-launched eval as an experiment so the dashboard can track it."""
+    from uuid import uuid4
+    exp = {
+        "id": uuid4().hex,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "started_at": datetime.now(timezone.utc).isoformat(),
+        "status": "running",
+        "pid": os.getpid(),
+        "completed_at": None,
+        "error": None,
+        "config": {
+            "mode": mode,
+            "scenario": scenario,
+            "models": models,
+            "runs": runs,
+            "simultaneous": simultaneous,
+            "parallel": parallel,
+        },
+        "progress": {"current_run": 0, "total_runs": runs},
+    }
+    experiments = _load_experiments()
+    experiments.append(exp)
+    _save_experiments(experiments)
+    return exp["id"]
+
+
+def _complete_cli_experiment(exp_id):
+    """Mark a CLI-launched experiment as completed."""
+    _update_experiment(exp_id, {
+        "status": "completed",
+        "completed_at": datetime.now(timezone.utc).isoformat(),
+    })
+
+
 def _update_experiment(exp_id, updates):
     """Update a single experiment by ID."""
     with file_lock(EXPERIMENTS_FILE):
@@ -1316,9 +1351,13 @@ def main():
         if not test_models:
             print("Error: --models must include at least one model besides the anchor.")
             sys.exit(1)
-        run_benchmark(scenario_name, args.anchor, test_models, args.runs or 3, args.verbose,
+        _runs = args.runs or 3
+        exp_id = _register_cli_experiment("benchmark", scenario_name, args.models, _runs,
+                                          simultaneous=args.simultaneous, parallel=args.parallel)
+        run_benchmark(scenario_name, args.anchor, test_models, _runs, args.verbose,
                       simultaneous=args.simultaneous, parallel=args.parallel,
                       temperature=args.temperature)
+        _complete_cli_experiment(exp_id)
         return
 
     if not args.eval:
@@ -1361,13 +1400,19 @@ def main():
             print("Error: tournament mode requires exactly 2 models")
             print("  Example: --models haiku,opus")
             sys.exit(1)
+        exp_id = _register_cli_experiment("eval", "all", args.models, args.runs,
+                                          simultaneous=args.simultaneous, parallel=args.parallel)
         run_tournament(model_names[0], model_names[1], args.runs, args.verbose,
                        simultaneous=args.simultaneous, parallel=args.parallel,
                        temperature=args.temperature)
+        _complete_cli_experiment(exp_id)
     else:
+        exp_id = _register_cli_experiment("eval", args.eval, args.models, args.runs,
+                                          simultaneous=args.simultaneous, parallel=args.parallel)
         run_eval(args.eval, args.models, args.runs, args.verbose,
                  simultaneous=args.simultaneous, parallel=args.parallel,
                  temperature=args.temperature)
+        _complete_cli_experiment(exp_id)
 
 
 if __name__ == "__main__":
