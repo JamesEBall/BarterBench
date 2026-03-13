@@ -311,8 +311,18 @@ def print_benchmark_leaderboard(run_entries, anchor):
 def run_benchmark(scenario_name, anchor, test_models, runs, verbose,
                   simultaneous=False, parallel=1, temperature=1.0, history_rounds=3):
     """Run benchmark mode: test models against anchor in a single scenario."""
-    scenario = load_scenario(scenario_name)
-    num_agents = len(scenario["agents"])
+    procedural = scenario_name == "procedural"
+
+    if procedural:
+        # Default: 8 agents for procedural benchmark
+        default_agents = 8
+        scenario = _generate_scenario_for_eval(default_agents)
+        scenario_name = scenario["name"]
+        num_agents = default_agents
+        print(f"Procedural scenario: {scenario_name} ({num_agents} agents, seed={scenario['_seed']})")
+    else:
+        scenario = load_scenario(scenario_name)
+        num_agents = len(scenario["agents"])
 
     config, config_str = build_benchmark_config(anchor, test_models, num_agents)
 
@@ -340,14 +350,21 @@ def run_benchmark(scenario_name, anchor, test_models, runs, verbose,
 
     def _run_one(run_num):
         run_id = run_offset + run_num + 1
+        # Fresh scenario each run for procedural mode
+        if procedural and run_num > 0:
+            run_scenario = _generate_scenario_for_eval(num_agents)
+            run_name = run_scenario["name"]
+        else:
+            run_scenario = scenario
+            run_name = scenario_name
         print(f"  Run {run_num + 1}/{runs}")
-        entry = run_single(scenario_name, scenario, config, config_str, run_id, verbose,
+        entry = run_single(run_name, run_scenario, config, config_str, run_id, verbose,
                            simultaneous=simultaneous, live_updates=True, temperature=temperature,
                            history_rounds=history_rounds)
         entry["mode"] = "benchmark"
         entry["anchor_model"] = anchor
         _locked_append_result(entry, BENCHMARK_RESULTS_FILE)
-        save_run_file(entry, scenario_name)
+        save_run_file(entry, run_name)
         return entry
 
     if parallel > 1:
@@ -563,18 +580,39 @@ def resume_run(checkpoint_path, verbose=False):
 
 # ---- Orchestration modes ----
 
+def _generate_scenario_for_eval(num_agents, run_seed=None):
+    """Generate a fresh procedural scenario for contamination-free eval."""
+    from scenario_gen import generate_scenario
+    seed = run_seed if run_seed is not None else random.randint(0, 2**32 - 1)
+    num_items = max(3, num_agents // 2)
+    num_scarce = max(1, num_items // 3)
+    scenario = generate_scenario(num_agents=num_agents, num_items=num_items,
+                                 num_scarce=num_scarce, seed=seed)
+    scenario["_generated"] = True
+    scenario["_seed"] = seed
+    return scenario
+
+
 def run_eval(scenario_name, model_config_str, runs, verbose,
              simultaneous=False, parallel=1, temperature=1.0, history_rounds=3):
-    """Run eval for a single scenario."""
-    scenario = load_scenario(scenario_name)
-    num_agents = len(scenario["agents"])
+    """Run eval for a single scenario. Use scenario_name='procedural' for fresh generated scenarios."""
+    procedural = scenario_name == "procedural"
     model_config = parse_model_config(model_config_str)
-
     total_assigned = sum(c for _, c in model_config)
-    if total_assigned != num_agents:
-        print(f"Error: scenario '{scenario_name}' has {num_agents} agents but model config specifies {total_assigned}")
-        print(f"  Use --models with correct counts, e.g. --models haiku:{num_agents // 2},opus:{num_agents // 2}")
-        sys.exit(1)
+
+    if procedural:
+        # Generate a scenario matching the model config agent count
+        scenario = _generate_scenario_for_eval(total_assigned)
+        scenario_name = scenario["name"]
+        num_agents = total_assigned
+        print(f"Procedural scenario: {scenario_name} ({num_agents} agents, seed={scenario['_seed']})")
+    else:
+        scenario = load_scenario(scenario_name)
+        num_agents = len(scenario["agents"])
+        if total_assigned != num_agents:
+            print(f"Error: scenario '{scenario_name}' has {num_agents} agents but model config specifies {total_assigned}")
+            print(f"  Use --models with correct counts, e.g. --models haiku:{num_agents // 2},opus:{num_agents // 2}")
+            sys.exit(1)
 
     results = load_existing_results()
     run_offset = len(results)
@@ -591,11 +629,18 @@ def run_eval(scenario_name, model_config_str, runs, verbose,
 
     def _run_one(run_num):
         run_id = run_offset + run_num + 1
-        entry = run_single(scenario_name, scenario, model_config, model_config_str, run_id, verbose,
+        # For procedural mode, generate a fresh scenario each run (different seed)
+        if procedural and run_num > 0:
+            run_scenario = _generate_scenario_for_eval(total_assigned)
+            run_scenario_name = run_scenario["name"]
+        else:
+            run_scenario = scenario
+            run_scenario_name = scenario_name
+        entry = run_single(run_scenario_name, run_scenario, model_config, model_config_str, run_id, verbose,
                            simultaneous=simultaneous, live_updates=True, temperature=temperature,
                            history_rounds=history_rounds)
         _locked_append_result(entry, RESULTS_FILE)
-        save_run_file(entry, scenario_name)
+        save_run_file(entry, run_scenario_name)
         return entry
 
     if parallel > 1:
@@ -1313,7 +1358,7 @@ def serve_dashboard():
 def main():
     parser = argparse.ArgumentParser(description="BarterBench: competitive marketplace benchmark with ELO ratings")
     parser.add_argument("--eval", type=str, default=None,
-                        help="Scenario to evaluate, or 'all' for full tournament")
+                        help="Scenario to evaluate: name, 'all' for tournament, or 'procedural' for fresh generated (default for benchmark)")
     parser.add_argument("--models", type=str, default=None,
                         help="Model config: 'haiku:3,opus:3' — counts must match scenario agent count")
     parser.add_argument("--runs", type=int, default=1,
@@ -1474,7 +1519,7 @@ def main():
             print("Error: --models required for benchmark mode.")
             print("  Example: --benchmark --models sonnet,opus")
             sys.exit(1)
-        scenario_name = args.eval or "grand_bazaar"
+        scenario_name = args.eval or "procedural"
         test_models = [m.strip().split(":")[0] for m in args.models.split(",")]
         test_models = [m for m in test_models if m != args.anchor]
         if not test_models:
