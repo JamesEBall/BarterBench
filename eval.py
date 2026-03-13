@@ -469,6 +469,98 @@ def run_single(scenario_name, scenario, model_config, model_config_str, run_id, 
         }
 
 
+def resume_run(checkpoint_path, verbose=False):
+    """Resume a match from a checkpoint file."""
+    from pathlib import Path
+    cp_path = Path(checkpoint_path) if Path(checkpoint_path).is_absolute() else Path(__file__).parent / checkpoint_path
+    if not cp_path.exists():
+        print(f"Error: checkpoint file not found: {cp_path}")
+        sys.exit(1)
+
+    engine, start_round, initial_inventories, elapsed_offset = MarketEngine.from_checkpoint(str(cp_path))
+    scenario_name = engine.scenario.get("name", "unknown")
+    model_assignments = [a.model_name for a in engine.agents]
+
+    print(f"Resuming: {scenario_name}")
+    print(f"  Round {start_round}/{engine.max_rounds} | Agents: {engine.num_agents} | Models: {' '.join(model_assignments)}")
+    print(f"  Prior: {len(engine.trades)} trades, {len(engine.history)} actions, {elapsed_offset:.0f}s elapsed")
+    print(f"  Running marketplace...", end="", flush=True)
+
+    try:
+        result = engine.run(start_round=start_round, initial_inventories=initial_inventories,
+                            elapsed_offset=elapsed_offset)
+        result["scenario_data"] = engine.scenario
+        metrics = compute_metrics(result)
+
+        model_config_str = ",".join(f"{m}:{model_assignments.count(m)}" for m in dict.fromkeys(model_assignments))
+        entry = {
+            "run_id": engine.run_id,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "scenario": scenario_name,
+            "model_config": model_config_str,
+            "model_assignments": model_assignments,
+            "resumed_from_round": start_round,
+            **metrics,
+            "elapsed_seconds": result["elapsed_seconds"],
+            "backend": engine.agents[0].backend,
+            "agent_tokens": [
+                {"model": engine.agents[i].model_name,
+                 "tokens": engine.agents[i].total_input_tokens + engine.agents[i].total_output_tokens}
+                for i in range(engine.num_agents)
+            ],
+            "initial_inventories": result["initial_inventories"],
+            "targets": [dict(a.get("target", {})) for a in engine.scenario["agents"]],
+            "agent_results": result["agent_results"],
+            "trades": result["trades"],
+            "history": result["history"],
+        }
+
+        cost_eff = compute_cost_efficiency(entry)
+        if cost_eff:
+            entry["cost_efficiency"] = cost_eff
+
+        status = f"goal={metrics['avg_goal_completion']*100:.0f}% trades={metrics['num_trades']} invalid={metrics['invalid_rate']*100:.0f}%"
+        print(f" done ({status})")
+
+        for model, score in metrics["model_goal_completion"].items():
+            print(f"    {model}: {score*100:.1f}% goal completion")
+
+        _locked_append_result(entry, RESULTS_FILE)
+        save_run_file(entry, scenario_name)
+
+        match = record_match(entry)
+        if match:
+            w = match["winner"]
+            elo_a = match["elo_after"][match["model_a"]]
+            elo_b = match["elo_after"][match["model_b"]]
+            if w == "draw":
+                print(f"    ELO: draw — {match['model_a']}={elo_a:.0f} {match['model_b']}={elo_b:.0f}")
+            else:
+                print(f"    ELO: {w} wins — {match['model_a']}={elo_a:.0f} {match['model_b']}={elo_b:.0f}")
+
+        if verbose:
+            print()
+            for h in result["history"]:
+                tag = f"    [R{h['round']}] Trader {h['agent']} ({h['model']})"
+                if h["action"] == "post_offer":
+                    inv = " [INVALID]" if h.get("invalid") else ""
+                    print(f"{tag} POST: give {h.get('give',{})} want {h.get('want',{})}{inv} — {h.get('message','')}")
+                elif h["action"] == "accept_offer":
+                    inv = " [INVALID]" if h.get("invalid") else ""
+                    print(f"{tag} ACCEPT offer #{h.get('offer_id','?')}{inv} — {h.get('message','')}")
+                elif h["action"] == "pass_turn":
+                    print(f"{tag} PASS — {h.get('message','')}")
+            print()
+
+        print_leaderboard([entry])
+        print(f"\nResults saved to {RESULTS_FILE}")
+
+    except Exception as e:
+        print(f" ERROR: {e}")
+        import traceback
+        traceback.print_exc()
+
+
 # ---- Orchestration modes ----
 
 def run_eval(scenario_name, model_config_str, runs, verbose,
@@ -1271,10 +1363,16 @@ def main():
                         help="Seed for procedural scenario generation")
     parser.add_argument("--history-rounds", type=int, default=3,
                         help="Number of past rounds to include in agent conversation history (default: 3)")
+    parser.add_argument("--resume", nargs="?", const="checkpoint.json", default=None,
+                        help="Resume from checkpoint file (default: checkpoint.json)")
     args = parser.parse_args()
 
     if args.serve:
         serve_dashboard()
+        return
+
+    if args.resume:
+        resume_run(args.resume, args.verbose)
         return
 
     if args.elo:

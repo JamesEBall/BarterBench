@@ -21,6 +21,9 @@ live_match.json
 arena/*.lock
 uv.lock
 
+# Checkpoints
+checkpoint.json
+
 # Experiments
 experiments.json
 experiments.json.lock

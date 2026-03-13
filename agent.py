@@ -295,6 +295,25 @@ class MarketAgent:
         else:
             self.cli_model = CLI_MODEL_MAP.get(model_name, model_name)
 
+    def get_state(self):
+        """Serialize agent state for checkpointing."""
+        state = {
+            "round_history": self.round_history,
+            "total_input_tokens": self.total_input_tokens,
+            "total_output_tokens": self.total_output_tokens,
+        }
+        if self.backend == "api" and self.conversation_history:
+            state["conversation_history"] = self.conversation_history
+        return state
+
+    def set_state(self, state):
+        """Restore agent state from checkpoint."""
+        self.round_history = [tuple(x) for x in state.get("round_history", [])]
+        self.total_input_tokens = state.get("total_input_tokens", 0)
+        self.total_output_tokens = state.get("total_output_tokens", 0)
+        if self.backend == "api":
+            self.conversation_history = state.get("conversation_history", [])
+
     @property
     def contestant_name(self):
         """Return the name used for scoring — strategy_id in arena mode, model_name otherwise."""
