@@ -193,7 +193,8 @@ class MarketAgent:
         self.temperature = temperature
         self.total_input_tokens = 0
         self.total_output_tokens = 0
-        self.conversation_history = []  # stateful: accumulate turns within a match
+        self.conversation_history = []  # stateful: accumulate turns within a match (API)
+        self.round_history = []  # stateful: (round, action_summary) tuples (CLI)
 
         if backend == "auto":
             self.backend = "api" if os.environ.get("ANTHROPIC_API_KEY") else "cli"
@@ -297,12 +298,23 @@ class MarketAgent:
             "reasoning": reasoning,
         }
 
+    def _build_round_history_section(self):
+        """Build a prompt section summarizing this agent's previous actions."""
+        if not self.round_history:
+            return ""
+        lines = ["\n## Your Previous Actions (memory)"]
+        for rnd, summary in self.round_history[-6:]:  # last 6 rounds max
+            lines.append(f"  Round {rnd}: {summary}")
+        return "\n".join(lines)
+
     def _turn_cli(self, inventory, target, order_book, recent_trades, round_num, max_rounds):
         context = _build_marketplace_context(
             self.agent_idx, inventory, target, order_book, recent_trades, round_num, max_rounds,
             strategy_prompt=self.strategy_prompt,
         )
-        prompt = f"{context}\n\n{JSON_SCHEMA_INSTRUCTION}\n\nIt's your turn. Choose your action."
+        # Inject round history for statefulness
+        history_section = self._build_round_history_section()
+        prompt = f"{context}{history_section}\n\n{JSON_SCHEMA_INSTRUCTION}\n\nIt's your turn. Choose your action."
 
         for attempt in range(3):
             try:
@@ -315,7 +327,21 @@ class MarketAgent:
                     env=env,
                 )
                 if result.returncode == 0 and result.stdout.strip():
-                    return _parse_json_response(result.stdout.strip())
+                    parsed = _parse_json_response(result.stdout.strip())
+                    # Record action for future rounds
+                    action = parsed["action"]
+                    if action == "post_offer":
+                        summary = f"Posted offer: give {json.dumps(parsed['give'])} for {json.dumps(parsed['want'])}"
+                    elif action == "private_offer":
+                        summary = f"Sent private offer to Trader {parsed.get('target_agent')}: give {json.dumps(parsed['give'])} for {json.dumps(parsed['want'])}"
+                    elif action == "accept_offer":
+                        summary = f"Accepted offer #{parsed.get('offer_id')}"
+                    else:
+                        summary = "Passed turn"
+                    if parsed.get("message"):
+                        summary += f" — \"{parsed['message'][:80]}\""
+                    self.round_history.append((round_num + 1, summary))
+                    return parsed
                 if attempt < 2:
                     time.sleep(1)
             except subprocess.TimeoutExpired:
