@@ -269,13 +269,15 @@ class MarketAgent:
 
     def __init__(self, model_name: str, agent_idx: int, backend: str = "auto",
                  strategy_id: str = None, strategy_prompt: str = None,
-                 temperature: float = 1.0, auction_enabled: bool = False):
+                 temperature: float = 1.0, auction_enabled: bool = False,
+                 history_rounds: int = 3):
         self.model_name = model_name
         self.agent_idx = agent_idx
         self.strategy_id = strategy_id
         self.strategy_prompt = strategy_prompt
         self.temperature = temperature
         self.auction_enabled = auction_enabled
+        self.history_rounds = history_rounds
         self.total_input_tokens = 0
         self.total_output_tokens = 0
         self.conversation_history = []  # stateful: accumulate turns within a match (API)
@@ -369,8 +371,8 @@ class MarketAgent:
                                  "content": f"Action executed: {tool_name}"}]
                 })
 
-        # Cap history to last 6 exchanges (3 rounds) to control token usage
-        max_history_items = 18  # 6 exchanges × 3 messages each
+        # Cap history to control token usage (6 items per round: user + assistant + tool_result × 2 exchanges)
+        max_history_items = self.history_rounds * 6
         if len(self.conversation_history) > max_history_items:
             self.conversation_history = self.conversation_history[-max_history_items:]
 
@@ -403,7 +405,7 @@ class MarketAgent:
         if not self.round_history:
             return ""
         lines = ["\n## Your Previous Actions (memory)"]
-        for rnd, summary in self.round_history[-6:]:  # last 6 rounds max
+        for rnd, summary in self.round_history[-(self.history_rounds * 2):]:  # configurable history depth
             lines.append(f"  Round {rnd}: {summary}")
         return "\n".join(lines)
 

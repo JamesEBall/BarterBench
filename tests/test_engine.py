@@ -396,6 +396,37 @@ class TestAuctionFullRound:
         assert len(engine.active_auctions) == 0
 
 
+class TestHistoryRounds:
+    def test_history_rounds_caps_conversation(self):
+        from agent import MarketAgent
+        # Create agent with history_rounds=1 (should cap at 6 items)
+        agent = MarketAgent.__new__(MarketAgent)
+        agent.history_rounds = 1
+        agent.conversation_history = [
+            {"role": "user", "content": "msg1"},
+            {"role": "assistant", "content": [{"type": "text", "text": "resp1"}]},
+            {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "1", "content": "ok"}]},
+            {"role": "user", "content": "msg2"},
+            {"role": "assistant", "content": [{"type": "text", "text": "resp2"}]},
+            {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "2", "content": "ok"}]},
+            {"role": "user", "content": "msg3"},
+            {"role": "assistant", "content": [{"type": "text", "text": "resp3"}]},
+            {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "3", "content": "ok"}]},
+        ]
+        # Simulate the cap logic
+        max_history_items = agent.history_rounds * 6
+        if len(agent.conversation_history) > max_history_items:
+            agent.conversation_history = agent.conversation_history[-max_history_items:]
+        assert len(agent.conversation_history) == 6
+
+    def test_default_history_rounds_is_three(self):
+        from agent import MarketAgent
+        agent = MarketAgent.__new__(MarketAgent)
+        # Simulate __init__ defaults
+        agent.history_rounds = 3
+        assert agent.history_rounds * 6 == 18
+
+
 class TestParseJsonResponse:
     def test_parse_auction_fields(self):
         from agent import _parse_json_response

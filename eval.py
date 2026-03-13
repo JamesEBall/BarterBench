@@ -309,7 +309,7 @@ def print_benchmark_leaderboard(run_entries, anchor):
 
 
 def run_benchmark(scenario_name, anchor, test_models, runs, verbose,
-                  simultaneous=False, parallel=1, temperature=1.0):
+                  simultaneous=False, parallel=1, temperature=1.0, history_rounds=3):
     """Run benchmark mode: test models against anchor in a single scenario."""
     scenario = load_scenario(scenario_name)
     num_agents = len(scenario["agents"])
@@ -342,7 +342,8 @@ def run_benchmark(scenario_name, anchor, test_models, runs, verbose,
         run_id = run_offset + run_num + 1
         print(f"  Run {run_num + 1}/{runs}")
         entry = run_single(scenario_name, scenario, config, config_str, run_id, verbose,
-                           simultaneous=simultaneous, live_updates=True, temperature=temperature)
+                           simultaneous=simultaneous, live_updates=True, temperature=temperature,
+                           history_rounds=history_rounds)
         entry["mode"] = "benchmark"
         entry["anchor_model"] = anchor
         _locked_append_result(entry, BENCHMARK_RESULTS_FILE)
@@ -365,7 +366,7 @@ def run_benchmark(scenario_name, anchor, test_models, runs, verbose,
 # ---- Run a single match (model vs model) ----
 
 def run_single(scenario_name, scenario, model_config, model_config_str, run_id, verbose,
-               simultaneous=False, live_updates=True, temperature=1.0):
+               simultaneous=False, live_updates=True, temperature=1.0, history_rounds=3):
     """Run a single marketplace match. Returns the result entry."""
     # Seed RNG for reproducibility — each run gets a unique but deterministic seed
     seed = hash((scenario_name, run_id)) % (2**32)
@@ -373,7 +374,8 @@ def run_single(scenario_name, scenario, model_config, model_config_str, run_id, 
     num_agents = len(scenario["agents"])
     model_assignments = assign_models(model_config, num_agents)
     agents = [
-        MarketAgent(model_name=model_assignments[i], agent_idx=i, temperature=temperature)
+        MarketAgent(model_name=model_assignments[i], agent_idx=i, temperature=temperature,
+                    history_rounds=history_rounds)
         for i in range(num_agents)
     ]
 
@@ -470,7 +472,7 @@ def run_single(scenario_name, scenario, model_config, model_config_str, run_id, 
 # ---- Orchestration modes ----
 
 def run_eval(scenario_name, model_config_str, runs, verbose,
-             simultaneous=False, parallel=1, temperature=1.0):
+             simultaneous=False, parallel=1, temperature=1.0, history_rounds=3):
     """Run eval for a single scenario."""
     scenario = load_scenario(scenario_name)
     num_agents = len(scenario["agents"])
@@ -498,7 +500,8 @@ def run_eval(scenario_name, model_config_str, runs, verbose,
     def _run_one(run_num):
         run_id = run_offset + run_num + 1
         entry = run_single(scenario_name, scenario, model_config, model_config_str, run_id, verbose,
-                           simultaneous=simultaneous, live_updates=True, temperature=temperature)
+                           simultaneous=simultaneous, live_updates=True, temperature=temperature,
+                           history_rounds=history_rounds)
         _locked_append_result(entry, RESULTS_FILE)
         save_run_file(entry, scenario_name)
         return entry
@@ -522,7 +525,7 @@ def run_eval(scenario_name, model_config_str, runs, verbose,
 
 
 def run_tournament(model_a, model_b, runs_per_scenario, verbose,
-                   simultaneous=False, parallel=1, temperature=1.0):
+                   simultaneous=False, parallel=1, temperature=1.0, history_rounds=3):
     """Run a full tournament: model_a vs model_b across all scenarios."""
     scenarios = list_scenarios()
     if not scenarios:
@@ -565,7 +568,8 @@ def run_tournament(model_a, model_b, runs_per_scenario, verbose,
             run_id = run_offset + current_match
             print(f"\n  Match {current_match}/{total_matches}")
             entry = run_single(scenario_name, scenario, model_config, model_config_str, run_id, verbose,
-                               simultaneous=simultaneous, live_updates=True, temperature=temperature)
+                               simultaneous=simultaneous, live_updates=True, temperature=temperature,
+                               history_rounds=history_rounds)
             _locked_append_result(entry, RESULTS_FILE)
             save_run_file(entry, scenario_name)
             return entry
@@ -1129,7 +1133,8 @@ def run_suite(test_models, verbose):
                 run_id = run_offset + match_num
                 print(f"\n  Run {run_num + 1}/{runs_per} (match {match_num}/{total})")
                 entry = run_single(scenario_name, scenario, model_config, model_config_str,
-                                   run_id, verbose, simultaneous=False, live_updates=True)
+                                   run_id, verbose, simultaneous=False, live_updates=True,
+                                   history_rounds=3)
                 entry["mode"] = "suite"
                 entry["anchor_model"] = anchor
                 _locked_append_result(entry, RESULTS_FILE)
@@ -1264,6 +1269,8 @@ def main():
                         help="Number of scarce items for generated scenario (default: 1)")
     parser.add_argument("--gen-seed", type=int, default=None,
                         help="Seed for procedural scenario generation")
+    parser.add_argument("--history-rounds", type=int, default=3,
+                        help="Number of past rounds to include in agent conversation history (default: 3)")
     args = parser.parse_args()
 
     if args.serve:
@@ -1360,7 +1367,7 @@ def main():
             # Run eval on the generated scenario immediately
             run_eval(scenario["name"], args.models, args.runs, args.verbose,
                      simultaneous=args.simultaneous, parallel=args.parallel,
-                     temperature=args.temperature)
+                     temperature=args.temperature, history_rounds=args.history_rounds)
         return
 
     # ---- Benchmark mode (hybrid anchor) ----
@@ -1380,7 +1387,7 @@ def main():
                                           simultaneous=args.simultaneous, parallel=args.parallel)
         run_benchmark(scenario_name, args.anchor, test_models, _runs, args.verbose,
                       simultaneous=args.simultaneous, parallel=args.parallel,
-                      temperature=args.temperature)
+                      temperature=args.temperature, history_rounds=args.history_rounds)
         _complete_cli_experiment(exp_id)
         return
 
@@ -1428,14 +1435,14 @@ def main():
                                           simultaneous=args.simultaneous, parallel=args.parallel)
         run_tournament(model_names[0], model_names[1], args.runs, args.verbose,
                        simultaneous=args.simultaneous, parallel=args.parallel,
-                       temperature=args.temperature)
+                       temperature=args.temperature, history_rounds=args.history_rounds)
         _complete_cli_experiment(exp_id)
     else:
         exp_id = _register_cli_experiment("eval", args.eval, args.models, args.runs,
                                           simultaneous=args.simultaneous, parallel=args.parallel)
         run_eval(args.eval, args.models, args.runs, args.verbose,
                  simultaneous=args.simultaneous, parallel=args.parallel,
-                 temperature=args.temperature)
+                 temperature=args.temperature, history_rounds=args.history_rounds)
         _complete_cli_experiment(exp_id)
 
 
