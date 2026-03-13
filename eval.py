@@ -15,11 +15,12 @@ from datetime import datetime, timezone
 from http.server import SimpleHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
-from agent import MarketAgent
+from agent import MarketAgent, RandomAgent
 from engine import MarketEngine
 from elo import record_match, print_elo_leaderboard, reset_ratings, load_ratings, file_lock
 from bradley_terry import compute_bt_ratings, print_bt_leaderboard, reset_bt
 from scoring import compute_metrics, compute_cost_efficiency
+from model_registry import get_model_info, compute_dollar_cost, get_size_tier
 
 SCENARIOS_DIR = Path(__file__).parent / "scenarios"
 RESULTS_FILE = Path(__file__).parent / "results.json"
@@ -377,7 +378,98 @@ def run_benchmark(scenario_name, anchor, test_models, runs, verbose,
             run_entries.append(entry)
 
     print_benchmark_leaderboard(run_entries, anchor)
+
+    # Statistical summary with confidence intervals (if multi-run)
+    if len(run_entries) > 1:
+        from scoring import compute_aggregate_statistics
+        stats = compute_aggregate_statistics(run_entries)
+        if stats:
+            print(f"\n  Statistical Summary ({stats['total_runs']} runs):")
+            for model, s in sorted(stats["per_model"].items(), key=lambda x: -x[1]["mean"]):
+                print(f"    {model:<16s} {s['mean']*100:.1f}% ± {s['std']*100:.1f}% "
+                      f"[{s['ci_lower']*100:.1f}-{s['ci_upper']*100:.1f}%] (95% CI)")
+
     print(f"\nResults saved to {BENCHMARK_RESULTS_FILE}")
+
+
+# ---- Cross-provider matrix (all pairs) ----
+
+def run_matrix(models, runs_per_pair, verbose, simultaneous=False, parallel=1,
+               temperature=1.0, history_rounds=3):
+    """Run round-robin pairwise comparisons across all model pairs.
+
+    For N models, runs N*(N-1)/2 pairwise matchups on procedural scenarios.
+    """
+    from scoring import compute_aggregate_statistics
+    from itertools import combinations
+
+    pairs = list(combinations(models, 2))
+    total_matches = len(pairs) * runs_per_pair
+
+    print(f"\n{'='*70}")
+    print(f"CROSS-PROVIDER MODEL MATRIX")
+    print(f"{'='*70}")
+    print(f"Models: {', '.join(models)}")
+    print(f"Pairs: {len(pairs)} | Runs per pair: {runs_per_pair} | Total matches: {total_matches}")
+    print()
+
+    all_entries = []
+    for pair_idx, (model_a, model_b) in enumerate(pairs):
+        print(f"\n--- Pair {pair_idx + 1}/{len(pairs)}: {model_a} vs {model_b} ---")
+        pair_entries = []
+
+        for run_num in range(runs_per_pair):
+            scenario = _generate_scenario_for_eval(
+                num_agents=6, num_items=4, num_scarce=1,
+                extra_seed=hash((model_a, model_b, run_num)),
+            )
+            scenario_name = f"matrix_{model_a}_vs_{model_b}"
+            config = [(model_a, 3), (model_b, 3)]
+            config_str = f"{model_a}:3,{model_b}:3"
+            run_id = hash((model_a, model_b, run_num)) % 100000
+
+            entry = run_single(scenario_name, scenario, config, config_str, run_id, verbose,
+                               simultaneous=simultaneous, temperature=temperature,
+                               history_rounds=history_rounds)
+            entry["mode"] = "matrix"
+            _locked_append_result(entry, RESULTS_FILE)
+            pair_entries.append(entry)
+
+        # Print pair summary
+        stats = compute_aggregate_statistics(pair_entries)
+        if stats:
+            for model, s in stats["per_model"].items():
+                print(f"    {model}: {s['mean']*100:.1f}% ± {s['std']*100:.1f}% ({s['n_runs']} runs)")
+
+        all_entries.extend(pair_entries)
+
+    # Print overall matrix
+    print(f"\n{'='*70}")
+    print(f"MATRIX RESULTS ({len(all_entries)} total matches)")
+    print(f"{'='*70}")
+
+    # Aggregate all results
+    stats = compute_aggregate_statistics(all_entries)
+    if stats:
+        print(f"\n{'Model':<20s} {'Mean':>8s} {'±Std':>8s} {'95% CI':>16s} {'N':>4s}")
+        print("-" * 60)
+        sorted_models = sorted(stats["per_model"].items(), key=lambda x: -x[1]["mean"])
+        for model, s in sorted_models:
+            print(f"  {model:<18s} {s['mean']*100:>7.1f}% {s['std']*100:>7.1f}% "
+                  f"[{s['ci_lower']*100:.1f}-{s['ci_upper']*100:.1f}%] {s['n_runs']:>4d}")
+
+        # Pairwise significance
+        if stats.get("pairwise"):
+            print(f"\nPairwise Comparisons:")
+            for key, comp in stats["pairwise"].items():
+                sig = "*" if comp["significant"] else ""
+                print(f"  {key}: diff={comp['mean_diff']*100:+.1f}pp "
+                      f"CI=[{comp['ci_lower']*100:+.1f}, {comp['ci_upper']*100:+.1f}] "
+                      f"p={comp['p_value']:.3f} {sig}")
+
+    print_elo_leaderboard()
+    compute_bt_ratings()
+    print_bt_leaderboard()
 
 
 # ---- Run a single match (model vs model) ----
@@ -390,11 +482,13 @@ def run_single(scenario_name, scenario, model_config, model_config_str, run_id, 
     random.seed(seed)
     num_agents = len(scenario["agents"])
     model_assignments = assign_models(model_config, num_agents)
-    agents = [
-        MarketAgent(model_name=model_assignments[i], agent_idx=i, temperature=temperature,
-                    history_rounds=history_rounds)
-        for i in range(num_agents)
-    ]
+    agents = []
+    for i in range(num_agents):
+        if model_assignments[i] == "random":
+            agents.append(RandomAgent(agent_idx=i, seed=seed + i))
+        else:
+            agents.append(MarketAgent(model_name=model_assignments[i], agent_idx=i,
+                                      temperature=temperature, history_rounds=history_rounds))
 
     mode_str = " [simultaneous]" if simultaneous else ""
     print(f"  [{scenario_name}]{mode_str} models: {' '.join(model_assignments)}")
@@ -422,7 +516,15 @@ def run_single(scenario_name, scenario, model_config, model_config_str, run_id, 
             "backend": agents[0].backend,
             "agent_tokens": [
                 {"model": agents[i].model_name,
-                 "tokens": agents[i].total_input_tokens + agents[i].total_output_tokens}
+                 "agent_idx": i,
+                 "tokens": agents[i].total_input_tokens + agents[i].total_output_tokens,
+                 "input_tokens": agents[i].total_input_tokens,
+                 "output_tokens": agents[i].total_output_tokens,
+                 "cost_usd": compute_dollar_cost(
+                     agents[i].model_name,
+                     agents[i].total_input_tokens,
+                     agents[i].total_output_tokens),
+                 }
                 for i in range(num_agents)
             ],
             "initial_inventories": result["initial_inventories"],
@@ -430,6 +532,44 @@ def run_single(scenario_name, scenario, model_config, model_config_str, run_id, 
             "agent_results": result["agent_results"],
             "trades": result["trades"],
             "history": clean_history,
+        }
+
+        # Model metadata (dimensions for analysis: size, family, provider, cost tier)
+        entry["model_metadata"] = {
+            model: get_model_info(model) for model in set(model_assignments)
+        }
+
+        # Per-agent latency statistics
+        entry["agent_latencies"] = [
+            {
+                "model": agents[i].model_name,
+                "agent_idx": i,
+                "mean_latency": (sum(agents[i].turn_latencies) / len(agents[i].turn_latencies)
+                                 if agents[i].turn_latencies else 0),
+                "max_latency": max(agents[i].turn_latencies) if agents[i].turn_latencies else 0,
+                "min_latency": min(agents[i].turn_latencies) if agents[i].turn_latencies else 0,
+                "total_latency": sum(agents[i].turn_latencies),
+                "num_turns": len(agents[i].turn_latencies),
+            }
+            for i in range(num_agents)
+        ]
+
+        # Reproducibility metadata
+        try:
+            git_sha = subprocess.check_output(
+                ["git", "rev-parse", "HEAD"], stderr=subprocess.DEVNULL,
+                cwd=str(Path(__file__).parent)
+            ).decode().strip()[:12]
+        except Exception:
+            git_sha = "unknown"
+        entry["reproducibility"] = {
+            "python_version": sys.version.split()[0],
+            "barterbench_version": "1.0.0",
+            "git_sha": git_sha,
+            "seed": seed,
+            "temperature": temperature,
+            "history_rounds": history_rounds,
+            "simultaneous": simultaneous,
         }
 
         # Cost-adjusted performance
@@ -1410,6 +1550,14 @@ def main():
                         help="Number of past rounds to include in agent conversation history (default: 3)")
     parser.add_argument("--resume", nargs="?", const="checkpoint.json", default=None,
                         help="Resume from checkpoint file (default: checkpoint.json)")
+    # Analysis & reporting
+    parser.add_argument("--scaling-report", action="store_true",
+                        help="Print scaling analysis (performance vs model size/cost)")
+    parser.add_argument("--behavior-report", action="store_true",
+                        help="Print emergent behavior taxonomy report")
+    # Cross-provider matrix
+    parser.add_argument("--matrix", action="store_true",
+                        help="Run pairwise model matrix: all combinations of --models")
     args = parser.parse_args()
 
     if args.serve:
@@ -1418,6 +1566,36 @@ def main():
 
     if args.resume:
         resume_run(args.resume, args.verbose)
+        return
+
+    if args.scaling_report:
+        from analysis import print_scaling_report
+        print_scaling_report()
+        return
+
+    if args.behavior_report:
+        from taxonomy import print_behavior_report
+        from analysis import load_results
+        entries = load_results()
+        if not entries:
+            print("No results found. Run some evals first.")
+        else:
+            print_behavior_report(entries)
+        return
+
+    if args.matrix:
+        if not args.models:
+            print("Error: --matrix requires --models (comma-separated list)")
+            print("  Example: --matrix --models haiku,sonnet,opus,hunter,llama-70b --runs 3")
+            sys.exit(1)
+        model_list = [m.strip().split(":")[0] for m in args.models.split(",")]
+        if len(model_list) < 2:
+            print("Error: --matrix requires at least 2 models")
+            sys.exit(1)
+        _runs = args.runs or 1
+        run_matrix(model_list, _runs, args.verbose,
+                   simultaneous=args.simultaneous, parallel=args.parallel,
+                   temperature=args.temperature, history_rounds=args.history_rounds)
         return
 
     if args.elo:
@@ -1550,10 +1728,15 @@ def main():
         print("  python3 eval.py --arena --models haiku,sonnet,opus --eval all")
         print("  python3 eval.py --submit 'my_strat' 'Trade aggressively'")
         print()
-        print("Other:")
-        print("  python3 eval.py --elo      # View ELO ratings")
-        print("  python3 eval.py --list     # List scenarios & strategies")
-        print("  python3 eval.py --serve    # Dashboard")
+        print("Cross-provider matrix (all pairwise comparisons):")
+        print("  python3 eval.py --matrix --models haiku,sonnet,opus,hunter --runs 3")
+        print()
+        print("Analysis:")
+        print("  python3 eval.py --scaling-report    # Performance vs model size/cost")
+        print("  python3 eval.py --behavior-report   # Emergent behavior taxonomy")
+        print("  python3 eval.py --elo               # View ELO ratings")
+        print("  python3 eval.py --list              # List scenarios & strategies")
+        print("  python3 eval.py --serve             # Dashboard")
         return
 
     if not args.models:

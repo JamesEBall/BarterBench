@@ -191,6 +191,58 @@ def save_procedural_scenario(scenario, overwrite=False):
     return path
 
 
+def generate_calibrated_scenario(
+    target_difficulty=0.3,
+    tolerance=0.15,
+    max_attempts=20,
+    **kwargs,
+):
+    """Generate a scenario calibrated to a target difficulty level.
+
+    Uses the solvability solver to estimate difficulty before finalizing.
+    Retries with different seeds until difficulty falls within tolerance.
+
+    Args:
+        target_difficulty: desired difficulty (0 = trivial, 1 = impossible)
+        tolerance: acceptable deviation from target
+        max_attempts: max generation attempts
+        **kwargs: passed to generate_scenario()
+
+    Returns:
+        dict: scenario with difficulty close to target
+    """
+    from solvability import compute_max_welfare
+
+    rng = random.Random(kwargs.get("seed"))
+    best_scenario = None
+    best_diff = float("inf")
+
+    for attempt in range(max_attempts):
+        seed = rng.randint(0, 2**32 - 1)
+        kwargs_copy = dict(kwargs)
+        kwargs_copy["seed"] = seed
+        scenario = generate_scenario(**kwargs_copy)
+
+        solvability = compute_max_welfare(scenario)
+        difficulty = 1 - solvability["max_avg_completion"]
+
+        deviation = abs(difficulty - target_difficulty)
+        if deviation < best_diff:
+            best_diff = deviation
+            best_scenario = scenario
+            best_scenario["_calibration"] = {
+                "target_difficulty": target_difficulty,
+                "actual_difficulty": round(difficulty, 4),
+                "solvability": solvability,
+                "attempts": attempt + 1,
+            }
+
+        if deviation <= tolerance:
+            break
+
+    return best_scenario
+
+
 def generate_suite(count=5, seed=42):
     """Generate a suite of diverse procedural scenarios.
 

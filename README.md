@@ -527,6 +527,39 @@ python3 eval.py --resume path/to/checkpoint.json  # Resume from specific file
 
 The checkpoint saves full engine state (inventories, order book, trades, auctions) and per-agent conversation history, so resumed runs continue seamlessly.
 
+### Random Baseline
+
+Compare any model against a random baseline agent that makes random valid actions (zero API calls, zero cost):
+
+```bash
+# Random vs haiku
+python3 eval.py --benchmark --models random,haiku --eval gold_rush --runs 3
+
+# Include random in a multi-model benchmark
+python3 eval.py --benchmark --models random,haiku,sonnet --runs 3
+```
+
+### Cross-Provider Model Matrix
+
+Round-robin pairwise comparisons across all model combinations with statistical significance testing:
+
+```bash
+# Run all pairwise matchups between 4 models (6 pairs, 3 runs each = 18 matches)
+python3 eval.py --matrix --models haiku,sonnet,hunter,llama-70b --runs 3
+```
+
+### Analysis Reports
+
+Post-hoc analysis on accumulated results:
+
+```bash
+# Scaling analysis: performance vs model size, cost frontier, token efficiency
+python3 eval.py --scaling-report
+
+# Emergent behavior taxonomy: detect anchoring, hoarding, price discovery, etc.
+python3 eval.py --behavior-report
+```
+
 ### Other Commands
 
 ```bash
@@ -567,15 +600,19 @@ The gossip system means agents must decide on every turn: **broadcast to the mar
 ## 9. Architecture
 
 ```
-├── eval.py           # CLI entry point, tournament orchestration
-├── agent.py          # LLM agent wrapper (API + CLI backends, stateful, auction support)
+├── eval.py           # CLI entry point, tournament orchestration, matrix mode
+├── agent.py          # LLM agent wrapper (Anthropic API, OpenRouter, CLI) + RandomAgent baseline
 ├── engine.py         # N-agent marketplace engine with order book, auctions, checkpoint/resume
-├── scoring.py        # Comprehensive metrics: goal completion, collusion, social engineering,
-│                     #   welfare, Gini, deception, cost efficiency, capability decomposition
+├── model_registry.py # Central model metadata: size, family, provider, cost, context window
+├── scoring.py        # Metrics: goal completion, collusion, social engineering, welfare,
+│                     #   Gini, deception, cost efficiency, capability decomposition,
+│                     #   aggregate statistics with confidence intervals, scenario discrimination
+├── analysis.py       # Post-hoc analysis: scaling curves, cost frontiers, efficiency ranking
+├── taxonomy.py       # Emergent behavior taxonomy: anchoring, hoarding, price discovery, etc.
 ├── solvability.py    # Greedy upper bound on achievable welfare for scenario analysis
 ├── elo.py            # ELO rating computation + persistence
 ├── bradley_terry.py  # Bradley-Terry MLE ratings (global fit)
-├── scenario_gen.py   # Procedural scenario generation
+├── scenario_gen.py   # Procedural scenario generation + difficulty calibration
 ├── dashboard.html    # Dashboard: replay viewer, aggregate analytics, experiment launcher
 ├── arena/            # Arena mode: prompt strategy competition
 │   ├── runner.py     # Arena orchestration with file-locked parallel runs
@@ -584,24 +621,87 @@ The gossip system means agents must decide on every turn: **broadcast to the mar
 │   ├── gold_rush.json
 │   ├── water_crisis.json
 │   └── spice_wars.json
-└── tests/            # Test suite for scoring, engine, and auction mechanics
-    ├── test_scoring.py
-    └── test_engine.py
+└── tests/            # Test suite (80+ tests)
+    ├── test_engine.py         # Engine + auction mechanics
+    ├── test_scoring.py        # Scoring functions
+    ├── test_model_registry.py # Model metadata registry
+    ├── test_random_agent.py   # Random baseline validation
+    └── test_manipulation.py   # Manipulation detection precision/recall
 ```
+
+### Model Registry
+
+Every supported model has metadata in `model_registry.py` — parameter count, family, provider, cost per token, context window, and more. This enables analysis across dimensions:
+
+```python
+from model_registry import get_model_info, get_size_tier, compute_dollar_cost
+
+info = get_model_info("opus")
+# {'family': 'claude', 'provider': 'anthropic', 'parameters_b': 176, 'cost_tier': 'paid', ...}
+
+get_size_tier("llama-70b")  # 'large'
+compute_dollar_cost("haiku", input_tokens=50000, output_tokens=10000)  # $0.08
+```
+
+### Measurable Dimensions
+
+Every result entry now captures rich metadata for multi-dimensional analysis:
+
+| Dimension | Source | Example Analysis |
+|---|---|---|
+| **Model size** (parameters_b) | model_registry | Performance vs parameter scaling curves |
+| **Model family** (claude, llama, etc.) | model_registry | Cross-family capability comparison |
+| **Provider** (anthropic, meta, etc.) | model_registry | Provider quality comparison |
+| **Cost tier** (free vs paid) | model_registry | Free model viability analysis |
+| **Latency** (per-turn seconds) | agent_latencies | Speed vs quality tradeoff |
+| **Token efficiency** (tokens/trade) | agent_tokens | Cost-effectiveness ranking |
+| **Dollar cost** (USD per run) | agent_tokens.cost_usd | Budget-constrained model selection |
+
+### Emergent Behavior Taxonomy
+
+The taxonomy module (`taxonomy.py`) automatically detects trading behaviors from the action history:
+
+| Behavior | Detection Method |
+|---|---|
+| **Anchoring** | First offer ratio vs eventual trade ratios (large divergence) |
+| **Hoarding** | End-state scarce items > target requirements |
+| **Strategic passing** | Passing when holding desired items, then trading later at better rates |
+| **Intermediary trading** | Acquiring items NOT in target as leverage |
+| **Price discovery** | Decreasing variance of exchange ratios across rounds |
+| **Information hiding** | High private-to-public offer ratio |
+| **Dumping** | Late-round trades at worse rates than early-round trades |
+| **Early completion** | Goal achieved, then rational withdrawal from trading |
 
 ### Reproducibility
 
-Each run records a deterministic `seed` in its result JSON. The seed controls agent-to-slot assignment shuffling. To reproduce a run, use the same scenario, model config, and run_id. Note that LLM API sampling is inherently non-deterministic, so exact replay is not possible — but the experimental setup (slot assignments, turn order randomization) is fully reproducible.
+Each run records full reproducibility metadata:
 
-### Adding new models
+```json
+{
+  "reproducibility": {
+    "python_version": "3.13.0",
+    "barterbench_version": "1.0.0",
+    "git_sha": "aa1164c...",
+    "seed": 3271842,
+    "temperature": 1.0,
+    "history_rounds": 3
+  }
+}
+```
 
-Add the model to `MODEL_MAP` in `agent.py`, then run it against existing models. Supports any LLM with a chat completion or tool-use API — different providers, prompted variants, fine-tuned models, agent frameworks with custom reasoning strategies.
+### Backends
 
-### Auth
+Three LLM backends with automatic detection:
 
-Currently ships with an Anthropic backend:
+| Backend | Models | Auth |
+|---|---|---|
+| **Anthropic API** | haiku, sonnet, opus | `ANTHROPIC_API_KEY` env var |
+| **OpenRouter** | 15+ free models (hunter, llama-70b, gemma-27b, etc.) + paid (gpt4o, gemini-pro, deepseek) | `OPENROUTER_API_KEY` in `.env` |
+| **Claude CLI** | haiku, sonnet, opus | OAuth (no API key needed) |
+| **Random baseline** | random | No auth needed |
 
-- **With API key**: Set `ANTHROPIC_API_KEY` — uses the Anthropic SDK with tool_use
-- **Without API key**: Falls back to `claude` CLI (OAuth)
+### Adding New Models
 
-Extend `agent.py` to add OpenAI, Gemini, or other backends.
+1. Add the model alias to `OPENROUTER_MODEL_MAP` in `agent.py`
+2. Add metadata to `MODEL_REGISTRY` in `model_registry.py`
+3. Run it: `python3 eval.py --benchmark --models newmodel,haiku --runs 3`
