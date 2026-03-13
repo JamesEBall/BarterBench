@@ -19,7 +19,7 @@ from agent import MarketAgent
 from engine import MarketEngine
 from elo import record_match, print_elo_leaderboard, reset_ratings, load_ratings, file_lock
 from bradley_terry import compute_bt_ratings, print_bt_leaderboard, reset_bt
-from scoring import compute_metrics
+from scoring import compute_metrics, compute_cost_efficiency
 
 SCENARIOS_DIR = Path(__file__).parent / "scenarios"
 RESULTS_FILE = Path(__file__).parent / "results.json"
@@ -413,11 +413,20 @@ def run_single(scenario_name, scenario, model_config, model_config_str, run_id, 
             "history": clean_history,
         }
 
+        # Cost-adjusted performance
+        cost_eff = compute_cost_efficiency(entry)
+        if cost_eff:
+            entry["cost_efficiency"] = cost_eff
+
         status = f"goal={metrics['avg_goal_completion']*100:.0f}% trades={metrics['num_trades']} invalid={metrics['invalid_rate']*100:.0f}%"
         print(f" done ({status})")
 
         for model, score in metrics["model_goal_completion"].items():
-            print(f"    {model}: {score*100:.1f}% goal completion")
+            tokens_info = ""
+            if cost_eff and model in cost_eff["per_model"]:
+                gc_per_k = cost_eff["per_model"][model]["goal_completion_per_1k_tokens"]
+                tokens_info = f" ({gc_per_k:.3f} gc/1k tok)"
+            print(f"    {model}: {score*100:.1f}% goal completion{tokens_info}")
 
         match = record_match(entry)
         if match:
