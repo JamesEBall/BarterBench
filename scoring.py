@@ -663,6 +663,133 @@ def compute_cost_efficiency(entry):
     }
 
 
+def compute_aggregate_statistics(entries, n_bootstrap=1000, seed=42):
+    """Compute aggregate stats across multiple runs for the same scenario/config.
+
+    Returns per-model: mean, std, 95% CI, min, max, median for goal_completion.
+    Also returns pairwise comparisons with significance testing.
+    """
+    if not entries:
+        return None
+
+    rng = random.Random(seed)
+
+    # Collect per-model scores across all runs
+    model_scores = {}
+    for entry in entries:
+        mgc = entry.get("model_goal_completion", {})
+        for model, score in mgc.items():
+            model_scores.setdefault(model, []).append(score)
+
+    per_model = {}
+    for model, scores in model_scores.items():
+        n = len(scores)
+        mean = sum(scores) / n
+        variance = sum((s - mean) ** 2 for s in scores) / n if n > 1 else 0
+        std = variance ** 0.5
+
+        sorted_scores = sorted(scores)
+        median = sorted_scores[n // 2] if n % 2 else (sorted_scores[n // 2 - 1] + sorted_scores[n // 2]) / 2
+
+        # Bootstrap 95% CI
+        if n >= 2:
+            boot_means = []
+            for _ in range(n_bootstrap):
+                sample = [rng.choice(scores) for _ in range(n)]
+                boot_means.append(sum(sample) / len(sample))
+            boot_means.sort()
+            ci_lower = boot_means[int(0.025 * n_bootstrap)]
+            ci_upper = boot_means[int(0.975 * n_bootstrap)]
+        else:
+            ci_lower = mean
+            ci_upper = mean
+
+        per_model[model] = {
+            "mean": round(mean, 4),
+            "std": round(std, 4),
+            "ci_lower": round(ci_lower, 4),
+            "ci_upper": round(ci_upper, 4),
+            "min": round(min(scores), 4),
+            "max": round(max(scores), 4),
+            "median": round(median, 4),
+            "n_runs": n,
+        }
+
+    # Pairwise comparisons
+    models = sorted(model_scores.keys())
+    pairwise = {}
+    for i, m_a in enumerate(models):
+        for m_b in models[i + 1:]:
+            key = f"{m_a}_vs_{m_b}"
+            comparison = compute_match_confidence(
+                model_scores[m_a], model_scores[m_b],
+                n_bootstrap=n_bootstrap, seed=seed
+            )
+            if comparison:
+                pairwise[key] = comparison
+
+    return {
+        "per_model": per_model,
+        "pairwise": pairwise,
+        "total_runs": len(entries),
+    }
+
+
+def compute_scenario_discrimination(results, scenario_name=None):
+    """Measure how well a scenario discriminates between models.
+
+    Args:
+        results: list of run entries (from results.json)
+        scenario_name: filter to specific scenario (None = all)
+
+    Returns dict with discrimination metrics.
+    """
+    filtered = results
+    if scenario_name:
+        filtered = [r for r in results if r.get("scenario") == scenario_name]
+
+    if not filtered:
+        return None
+
+    # Collect per-model scores
+    model_scores = {}
+    for entry in filtered:
+        mgc = entry.get("model_goal_completion", {})
+        for model, score in mgc.items():
+            model_scores.setdefault(model, []).append(score)
+
+    if len(model_scores) < 2:
+        return None
+
+    # Mean score per model
+    model_means = {m: sum(s) / len(s) for m, s in model_scores.items()}
+
+    # Score variance across models (how spread out are model performances?)
+    means = list(model_means.values())
+    grand_mean = sum(means) / len(means)
+    score_variance = sum((m - grand_mean) ** 2 for m in means) / len(means)
+
+    # Ceiling effect: fraction of models scoring >0.95
+    ceiling = sum(1 for m in means if m > 0.95) / len(means)
+
+    # Floor effect: fraction of models scoring <0.05
+    floor = sum(1 for m in means if m < 0.05) / len(means)
+
+    # Discrimination index: range of model performances
+    discrimination_index = max(means) - min(means) if means else 0
+
+    return {
+        "scenario": scenario_name,
+        "num_models": len(model_scores),
+        "num_runs": len(filtered),
+        "model_means": {m: round(v, 4) for m, v in model_means.items()},
+        "score_variance": round(score_variance, 4),
+        "discrimination_index": round(discrimination_index, 4),
+        "ceiling_effect": round(ceiling, 4),
+        "floor_effect": round(floor, 4),
+    }
+
+
 def compute_capability_scores(result):
     """Decompose agent performance into sub-capabilities (0-1 scale per model).
 

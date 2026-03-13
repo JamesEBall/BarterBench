@@ -438,14 +438,17 @@ class MarketEngine:
             )
 
             action = turn["action"]
+            agent = self.agents[agent_idx]
+            latency = agent.turn_latencies[-1] if agent.turn_latencies else 0
             entry = {
                 "round": round_num,
                 "agent": agent_idx,
-                "model": self.agents[agent_idx].model_name,
-                "contestant": self.agents[agent_idx].contestant_name,
+                "model": agent.model_name,
+                "contestant": agent.contestant_name,
                 "action": action,
                 "message": turn.get("message", ""),
                 "reasoning": turn.get("reasoning", ""),
+                "latency_seconds": latency,
             }
 
             if action == "post_offer":

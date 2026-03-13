@@ -2,6 +2,7 @@
 
 import json
 import os
+import random as stdlib_random
 import re
 import subprocess
 import time
@@ -41,7 +42,7 @@ OPENROUTER_MODEL_MAP = {
     "trinity-large":   "arcee-ai/trinity-large-preview:free",  # MoE, 131K ctx
     # --- Mid-size models ---
     "step-flash":      "stepfun/step-3.5-flash:free",          # 196B MoE, 256K ctx
-    "qwen3-80b":       "qwen/qwen3-next-80b-a3b-istruct:free", # 80B MoE, 256K ctx
+    "qwen3-80b":       "qwen/qwen3-next-80b-a3b-instruct:free", # 80B MoE, 256K ctx
     "nemotron-30b":    "nvidia/nemotron-3-nano-30b-a3b:free",  # 30B MoE, 256K ctx
     "gemma-27b":       "google/gemma-3-27b-it:free",           # 27B, 128K ctx
     "trinity-mini":    "arcee-ai/trinity-mini:free",           # 26B MoE, 128K ctx
@@ -333,6 +334,7 @@ class MarketAgent:
         self.history_rounds = history_rounds
         self.total_input_tokens = 0
         self.total_output_tokens = 0
+        self.turn_latencies = []  # per-turn wall clock seconds
         self.conversation_history = []  # stateful: accumulate turns within a match (API)
         self.round_history = []  # stateful: (round, action_summary) tuples (CLI)
 
@@ -368,6 +370,7 @@ class MarketAgent:
             "round_history": self.round_history,
             "total_input_tokens": self.total_input_tokens,
             "total_output_tokens": self.total_output_tokens,
+            "turn_latencies": self.turn_latencies,
         }
         if self.backend == "api" and self.conversation_history:
             state["conversation_history"] = self.conversation_history
@@ -378,6 +381,7 @@ class MarketAgent:
         self.round_history = [tuple(x) for x in state.get("round_history", [])]
         self.total_input_tokens = state.get("total_input_tokens", 0)
         self.total_output_tokens = state.get("total_output_tokens", 0)
+        self.turn_latencies = state.get("turn_latencies", [])
         if self.backend == "api":
             self.conversation_history = state.get("conversation_history", [])
 
@@ -406,6 +410,7 @@ class MarketAgent:
         messages = list(self.conversation_history)
         messages.append({"role": "user", "content": "It's your turn. Choose your action."})
 
+        turn_start = time.monotonic()
         for attempt in range(3):
             try:
                 response = self.client.messages.create(
@@ -423,6 +428,7 @@ class MarketAgent:
                     time.sleep(2 ** attempt)
                 else:
                     raise
+        self.turn_latencies.append(round(time.monotonic() - turn_start, 3))
 
         self.total_input_tokens += response.usage.input_tokens
         self.total_output_tokens += response.usage.output_tokens
@@ -505,6 +511,7 @@ class MarketAgent:
         messages = [{"role": "system", "content": f"{context}{history_section}"}]
         messages.append({"role": "user", "content": f"{JSON_SCHEMA_INSTRUCTION}\n\nIt's your turn. Choose your action."})
 
+        turn_start = time.monotonic()
         response = None
         for attempt in range(3):
             try:
@@ -544,8 +551,10 @@ class MarketAgent:
                         return self._fallback_pass()
 
         if not response or not response.choices:
+            self.turn_latencies.append(round(time.monotonic() - turn_start, 3))
             return self._fallback_pass()
 
+        self.turn_latencies.append(round(time.monotonic() - turn_start, 3))
         choice = response.choices[0]
         if response.usage:
             self.total_input_tokens += response.usage.prompt_tokens
@@ -642,6 +651,7 @@ class MarketAgent:
         history_section = self._build_round_history_section()
         prompt = f"{context}{history_section}\n\n{JSON_SCHEMA_INSTRUCTION}\n\nIt's your turn. Choose your action."
 
+        turn_start = time.monotonic()
         for attempt in range(3):
             try:
                 env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
@@ -653,6 +663,7 @@ class MarketAgent:
                     env=env,
                 )
                 if result.returncode == 0 and result.stdout.strip():
+                    self.turn_latencies.append(round(time.monotonic() - turn_start, 3))
                     parsed = _parse_json_response(result.stdout.strip())
                     self._record_round_history(parsed, round_num)
                     return parsed
@@ -664,6 +675,7 @@ class MarketAgent:
                 else:
                     break
 
+        self.turn_latencies.append(round(time.monotonic() - turn_start, 3))
         return {
             "action": "pass_turn",
             "give": {},
@@ -672,3 +684,143 @@ class MarketAgent:
             "message": "Agent failed to respond",
             "reasoning": "",
         }
+
+
+class RandomAgent:
+    """Baseline agent that makes random valid actions. Zero API calls, zero cost.
+
+    Provides a lower bound for benchmark comparison — any useful model
+    should consistently outperform random play.
+    """
+
+    def __init__(self, agent_idx, seed=None, auction_enabled=False):
+        self.model_name = "random"
+        self.agent_idx = agent_idx
+        self.strategy_id = None
+        self.strategy_prompt = None
+        self.total_input_tokens = 0
+        self.total_output_tokens = 0
+        self.turn_latencies = []
+        self.round_history = []
+        self.backend = "random"
+        self.rng = stdlib_random.Random(seed)
+        self.auction_enabled = auction_enabled
+
+    @property
+    def contestant_name(self):
+        return "random"
+
+    def get_state(self):
+        return {
+            "round_history": self.round_history,
+            "total_input_tokens": 0,
+            "total_output_tokens": 0,
+            "turn_latencies": self.turn_latencies,
+            "rng_state": list(self.rng.getstate()),
+        }
+
+    def set_state(self, state):
+        self.round_history = [tuple(x) for x in state.get("round_history", [])]
+        self.turn_latencies = state.get("turn_latencies", [])
+        if "rng_state" in state:
+            rng_state = state["rng_state"]
+            # Reconstruct tuple format for Random.setstate
+            self.rng.setstate((rng_state[0], tuple(rng_state[1]), rng_state[2]))
+
+    def take_turn(self, inventory, target, order_book, recent_trades, round_num, max_rounds, auctions=None):
+        start = time.monotonic()
+        result = self._choose_action(inventory, target, order_book)
+        self.turn_latencies.append(round(time.monotonic() - start, 6))
+        return result
+
+    def _choose_action(self, inventory, target, order_book):
+        """Pick a random valid action weighted toward useful behavior.
+
+        Strategy: 40% try accept, 35% post offer, 25% pass.
+        Falls back to pass if no valid action is possible.
+        """
+        roll = self.rng.random()
+
+        # 40% — try to accept an existing offer
+        if roll < 0.40 and order_book:
+            acceptable = [o for o in order_book if o["poster"] != self.agent_idx
+                          and self._can_afford(inventory, o["want"])]
+            if acceptable:
+                offer = self.rng.choice(acceptable)
+                return {
+                    "action": "accept_offer",
+                    "give": {},
+                    "want": {},
+                    "offer_id": offer["id"],
+                    "message": "Random baseline: accepting available offer",
+                    "reasoning": "random",
+                }
+
+        # 35% — post a random offer (give something we have, want something we need)
+        if roll < 0.75:
+            offer = self._random_offer(inventory, target)
+            if offer:
+                return offer
+
+        # 25% — pass (or fallback)
+        return {
+            "action": "pass_turn",
+            "give": {},
+            "want": {},
+            "offer_id": None,
+            "message": "Random baseline: passing",
+            "reasoning": "random",
+        }
+
+    def _can_afford(self, inventory, cost):
+        """Check if inventory has enough items to pay cost."""
+        for item, qty in cost.items():
+            if inventory.get(item, 0) < int(qty):
+                return False
+        return True
+
+    def _random_offer(self, inventory, target):
+        """Generate a random but valid offer."""
+        # Items we have and can give (qty > 0 and not needed for target)
+        giveable = []
+        for item, qty in inventory.items():
+            if qty > 0:
+                target_need = target.get(item, 0)
+                surplus = qty - target_need
+                if surplus > 0:
+                    giveable.append((item, surplus))
+                elif qty > 0 and self.rng.random() < 0.3:
+                    # Sometimes offer items we need (suboptimal but adds noise)
+                    giveable.append((item, qty))
+
+        # Items we want (in our target but don't have enough)
+        wantable = []
+        for item, needed in target.items():
+            if needed > 0 and inventory.get(item, 0) < needed:
+                wantable.append((item, needed - inventory.get(item, 0)))
+
+        if not giveable or not wantable:
+            return None
+
+        give_item, max_give = self.rng.choice(giveable)
+        want_item, max_want = self.rng.choice(wantable)
+
+        give_qty = self.rng.randint(1, max(1, max_give))
+        want_qty = self.rng.randint(1, max(1, min(max_want, 4)))
+
+        is_private = self.rng.random() < 0.2
+        action = "private_offer" if is_private else "post_offer"
+
+        result = {
+            "action": action,
+            "give": {give_item: give_qty},
+            "want": {want_item: want_qty},
+            "offer_id": None,
+            "message": f"Random baseline: offering {give_item} for {want_item}",
+            "reasoning": "random",
+        }
+        if is_private:
+            # Pick a random other agent (we don't know num_agents, so just pick 0-11)
+            result["target_agent"] = self.rng.randint(0, 11)
+
+        return result

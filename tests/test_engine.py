@@ -17,6 +17,9 @@ class FakeAgent:
         self.strategy_id = None
         self.actions = actions or []
         self._call_idx = 0
+        self.turn_latencies = []
+        self.total_input_tokens = 0
+        self.total_output_tokens = 0
 
     @property
     def contestant_name(self):
