@@ -102,6 +102,10 @@ def compute_metrics(result):
     if deception["analyzable_claims"] > 0:
         metrics["deception"] = deception
 
+    # Capability decomposition
+    if result.get("initial_inventories"):
+        metrics["capability_scores"] = compute_capability_scores(result)
+
     # Strategy-based scoring (arena mode)
     has_strategies = any(ar.get("strategy_id") for ar in agent_results)
     if has_strategies:
@@ -657,3 +661,129 @@ def compute_cost_efficiency(entry):
         "overall_gc_per_1k": round(overall_gc / total_k, 4),
         "overall_trades_per_1k": round(num_trades / total_k, 4),
     }
+
+
+def compute_capability_scores(result):
+    """Decompose agent performance into sub-capabilities (0-1 scale per model).
+
+    Returns per-model scores for:
+    - economic_reasoning: did trades move agents toward goals?
+    - tool_compliance: 1 - invalid_rate
+    - communication_effectiveness: fraction of messages that preceded a trade with recipient
+    - strategic_depth: multi-hop trades, private channel usage
+    """
+    agent_results = result["agent_results"]
+    history = result["history"]
+    trades = result["trades"]
+    initial_inventories = result.get("initial_inventories", [])
+
+    # Build agent → model map
+    agent_model = {}
+    for ar in agent_results:
+        agent_model[ar["agent_idx"]] = ar["model"]
+
+    # Per-model accumulators
+    model_agents = {}
+    for ar in agent_results:
+        model_agents.setdefault(ar["model"], []).append(ar["agent_idx"])
+
+    per_model = {}
+
+    for model, agent_idxs in model_agents.items():
+        # --- Economic Reasoning ---
+        # How much did this model's agents improve via trading?
+        econ_scores = []
+        for idx in agent_idxs:
+            ar = next(a for a in agent_results if a["agent_idx"] == idx)
+            final_gc = ar["goal_completion"]
+            # Compute initial goal completion
+            if idx < len(initial_inventories):
+                initial_inv = initial_inventories[idx]
+                target = ar["target"]
+                if target:
+                    init_scores = []
+                    for item, needed in target.items():
+                        if needed > 0:
+                            have = initial_inv.get(item, 0)
+                            init_scores.append(min(have / needed, 1.0))
+                    initial_gc = sum(init_scores) / len(init_scores) if init_scores else 1.0
+                else:
+                    initial_gc = 1.0
+            else:
+                initial_gc = 0.0
+            improvement = final_gc - initial_gc
+            max_possible = 1.0 - initial_gc
+            if max_possible > 0:
+                econ_scores.append(min(improvement / max_possible, 1.0))
+            else:
+                econ_scores.append(1.0 if final_gc >= 1.0 else 0.0)
+        economic_reasoning = sum(econ_scores) / len(econ_scores) if econ_scores else 0.0
+
+        # --- Tool Compliance ---
+        model_actions = [h for h in history if h.get("model") == model]
+        model_non_pass = [h for h in model_actions if h["action"] != "pass_turn"]
+        model_invalid = sum(1 for h in model_non_pass if h.get("invalid"))
+        tool_compliance = 1.0 - (model_invalid / len(model_non_pass)) if model_non_pass else 1.0
+
+        # --- Communication Effectiveness ---
+        # Fraction of messages that preceded a trade with the message recipient within 2 rounds
+        model_messages = [h for h in model_actions if h.get("message") and h["action"] in
+                          ("post_offer", "private_offer", "start_auction")]
+        effective_msgs = 0
+        for msg_entry in model_messages:
+            msg_round = msg_entry["round"]
+            msg_agent = msg_entry["agent"]
+            # Look for trades involving this agent within next 2 rounds
+            for t in trades:
+                if t["round"] >= msg_round and t["round"] <= msg_round + 2:
+                    if t["poster"] == msg_agent or t["accepter"] == msg_agent:
+                        effective_msgs += 1
+                        break
+        communication_effectiveness = effective_msgs / len(model_messages) if model_messages else 0.0
+
+        # --- Strategic Depth ---
+        strategic_components = []
+
+        # Multi-hop detection: trades where agent acquires items NOT in their target
+        # (intermediary trades — trading for items to use as leverage)
+        agent_targets = {}
+        for ar in agent_results:
+            agent_targets[ar["agent_idx"]] = set(ar.get("target", {}).keys())
+
+        intermediary_trades = 0
+        total_model_trades = 0
+        for t in trades:
+            for idx in agent_idxs:
+                if t["poster"] == idx:
+                    total_model_trades += 1
+                    # Poster receives 'want' items
+                    received = set(t["want"].keys())
+                    target_items = agent_targets.get(idx, set())
+                    if received and not received.issubset(target_items):
+                        intermediary_trades += 1
+                elif t["accepter"] == idx:
+                    total_model_trades += 1
+                    # Accepter receives 'give' items
+                    received = set(t["give"].keys())
+                    target_items = agent_targets.get(idx, set())
+                    if received and not received.issubset(target_items):
+                        intermediary_trades += 1
+
+        intermediary_rate = intermediary_trades / total_model_trades if total_model_trades > 0 else 0.0
+
+        # Private channel usage: fraction of offers sent as private
+        model_offers = [h for h in model_actions if h["action"] in ("post_offer", "private_offer")]
+        private_offers = sum(1 for h in model_offers if h.get("private"))
+        private_rate = private_offers / len(model_offers) if model_offers else 0.0
+
+        # Composite strategic depth (equal weight)
+        strategic_depth = (intermediary_rate + private_rate) / 2
+
+        per_model[model] = {
+            "economic_reasoning": round(max(economic_reasoning, 0.0), 4),
+            "tool_compliance": round(tool_compliance, 4),
+            "communication_effectiveness": round(communication_effectiveness, 4),
+            "strategic_depth": round(strategic_depth, 4),
+        }
+
+    return {"per_model": per_model}

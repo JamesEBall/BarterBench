@@ -9,7 +9,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from scoring import (compute_collusion_metrics, compute_communication_analysis,
                      compute_metrics, compute_social_welfare, compute_gini_coefficient,
                      compute_deception_rate, compute_match_confidence,
-                     compute_cost_efficiency)
+                     compute_cost_efficiency, compute_capability_scores)
 
 
 def _make_result(agent_models, trades=None, history=None):
@@ -496,6 +496,85 @@ def test_solvability_in_compute_metrics():
     assert "scenario_difficulty" in metrics
 
 
+# ---- Phase 8: Capability Decomposition ----
+
+def test_capability_tool_compliance():
+    """Tool compliance should be 1 - invalid_rate."""
+    result = {
+        "agent_results": [
+            {"agent_idx": 0, "model": "haiku", "goal_completion": 0.8, "target": {"b": 2}},
+            {"agent_idx": 1, "model": "haiku", "goal_completion": 0.6, "target": {"a": 2}},
+        ],
+        "history": [
+            {"round": 0, "agent": 0, "model": "haiku", "action": "post_offer", "message": "offer"},
+            {"round": 0, "agent": 0, "model": "haiku", "action": "post_offer", "message": "offer", "invalid": True},
+            {"round": 0, "agent": 1, "model": "haiku", "action": "accept_offer", "message": "accept"},
+            {"round": 0, "agent": 1, "model": "haiku", "action": "pass_turn", "message": "pass"},
+        ],
+        "trades": [],
+        "initial_inventories": [{"a": 5, "b": 0}, {"b": 5, "a": 0}],
+        "num_trades": 0,
+        "num_turns": 4,
+    }
+    caps = compute_capability_scores(result)
+    # 3 non-pass actions, 1 invalid → compliance = 1 - 1/3 = 0.6667
+    assert abs(caps["per_model"]["haiku"]["tool_compliance"] - 0.6667) < 0.01
+
+
+def test_capability_economic_reasoning():
+    """Economic reasoning should be positive when trades improve goal completion."""
+    result = {
+        "agent_results": [
+            {"agent_idx": 0, "model": "haiku", "goal_completion": 1.0, "target": {"b": 2}},
+            {"agent_idx": 1, "model": "opus", "goal_completion": 1.0, "target": {"a": 2}},
+        ],
+        "history": [
+            {"round": 0, "agent": 0, "model": "haiku", "action": "post_offer", "message": "trade"},
+            {"round": 0, "agent": 1, "model": "opus", "action": "accept_offer", "message": "ok"},
+        ],
+        "trades": [{"round": 0, "poster": 0, "accepter": 1, "give": {"a": 2}, "want": {"b": 2}}],
+        "initial_inventories": [{"a": 5, "b": 0}, {"b": 5, "a": 0}],
+        "num_trades": 1,
+        "num_turns": 2,
+    }
+    caps = compute_capability_scores(result)
+    # Both agents went from 0.0 to 1.0 → economic_reasoning = 1.0
+    assert caps["per_model"]["haiku"]["economic_reasoning"] == 1.0
+    assert caps["per_model"]["opus"]["economic_reasoning"] == 1.0
+
+
+def test_capability_strategic_depth_private():
+    """Private offer usage should contribute to strategic depth."""
+    result = {
+        "agent_results": [
+            {"agent_idx": 0, "model": "haiku", "goal_completion": 0.5, "target": {"b": 2}},
+        ],
+        "history": [
+            {"round": 0, "agent": 0, "model": "haiku", "action": "private_offer", "message": "secret", "private": True},
+            {"round": 0, "agent": 0, "model": "haiku", "action": "private_offer", "message": "secret2", "private": True},
+        ],
+        "trades": [],
+        "initial_inventories": [{"a": 5, "b": 0}],
+        "num_trades": 0,
+        "num_turns": 2,
+    }
+    caps = compute_capability_scores(result)
+    # All offers are private → private_rate = 1.0, intermediary = 0 → depth = 0.5
+    assert caps["per_model"]["haiku"]["strategic_depth"] == 0.5
+
+
+def test_capability_in_compute_metrics():
+    """Capability scores should appear in compute_metrics when initial_inventories present."""
+    result = _make_result(["haiku", "opus"], trades=[
+        {"round": 0, "poster": 0, "accepter": 1, "give": {"x": 1}, "want": {"y": 1}},
+    ])
+    result["initial_inventories"] = [{"x": 5, "y": 0}, {"y": 5, "x": 0}]
+    metrics = compute_metrics(result)
+    assert "capability_scores" in metrics
+    assert "haiku" in metrics["capability_scores"]["per_model"]
+    assert "opus" in metrics["capability_scores"]["per_model"]
+
+
 if __name__ == "__main__":
     # Phase 1
     test_collusion_biased_trades()
@@ -537,3 +616,9 @@ if __name__ == "__main__":
     test_solvability_gold_rush()
     test_solvability_in_compute_metrics()
     print("All Phase 7 tests passed!")
+    # Phase 8
+    test_capability_tool_compliance()
+    test_capability_economic_reasoning()
+    test_capability_strategic_depth_private()
+    test_capability_in_compute_metrics()
+    print("All Phase 8 tests passed!")
