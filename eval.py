@@ -715,7 +715,16 @@ class DashboardHandler(SimpleHTTPRequestHandler):
 
     def _handle_get_experiments(self):
         experiments = _load_experiments()
-        # Refresh stale running statuses (only write back if something changed)
+        # Load results to estimate progress
+        all_results = []
+        for rf in [RESULTS_FILE, BENCHMARK_RESULTS_FILE]:
+            if rf.exists():
+                try:
+                    with open(rf) as f:
+                        all_results.extend(json.load(f))
+                except Exception:
+                    pass
+
         dirty = False
         for exp in experiments:
             if exp["status"] == "running":
@@ -727,6 +736,12 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                         exp["status"] = "completed"
                         exp["completed_at"] = datetime.now(timezone.utc).isoformat()
                         dirty = True
+
+                # Estimate progress from results created after experiment started
+                started = exp.get("started_at", "")
+                if started and exp.get("progress"):
+                    count = sum(1 for r in all_results if (r.get("timestamp", "") >= started))
+                    exp["progress"]["current_run"] = count
         if dirty:
             _save_experiments(experiments)
         self._send_json(experiments)

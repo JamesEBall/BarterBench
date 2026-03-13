@@ -1154,7 +1154,7 @@ class MarketScene {
 
     // Place agents in a circle around the centre
     this.agents = [];
-    const radius = Math.min(this.W, this.H) * 0.28;
+    const radius = Math.min(this.W, this.H) * 0.34;
     for (let i = 0; i < n; i++) {
       const angle = (i / n) * Math.PI * 2 - Math.PI / 2;
       const hx = this.centreX + Math.cos(angle) * radius;
@@ -1210,11 +1210,11 @@ class MarketScene {
     el.innerHTML = models.map(m =>
       `<span class="leg-item"><span class="leg-dot" style="background:${gc(m)}"></span>${m}</span>`
     ).join('');
-    // Add bubble legend
-    el.innerHTML += `
-      <span class="leg-item"><span class="leg-dot" style="background:#d97706"></span>shout</span>
-      <span class="leg-item"><span class="leg-dot" style="background:#7c3aed"></span>whisper</span>
-      <span class="leg-item"><span class="leg-dot" style="background:#059669"></span>trade</span>
+    // Separator + action legend with square markers
+    el.innerHTML += `<span style="margin:0 4px;color:var(--text3)">|</span>
+      <span class="leg-item"><span class="leg-dot" style="background:#d97706;border-radius:2px"></span>shout</span>
+      <span class="leg-item"><span class="leg-dot" style="background:#be185d;border-radius:2px"></span>whisper</span>
+      <span class="leg-item"><span class="leg-dot" style="background:#ca8a04;border-radius:2px"></span>trade</span>
     `;
   }
 
@@ -1272,9 +1272,9 @@ class MarketScene {
       agent.state = 'walking';
       agent.bubble = {
         text: '\u{1F90F} ' + itemStrShort(h.give || {}) + ' \u2192 ' + itemStrShort(h.want || {}),
-        color: '#7c3aed',
-        bgColor: 'rgba(124,58,237,0.15)',
-        borderColor: 'rgba(124,58,237,0.5)',
+        color: '#be185d',
+        bgColor: 'rgba(190,24,93,0.15)',
+        borderColor: 'rgba(190,24,93,0.5)',
         timer: 3,
         type: 'whisper',
       };
@@ -1294,9 +1294,9 @@ class MarketScene {
       agent.state = 'walking';
       agent.bubble = {
         text: '\u2714 trade!',
-        color: '#059669',
-        bgColor: 'rgba(5,150,105,0.15)',
-        borderColor: 'rgba(5,150,105,0.5)',
+        color: '#ca8a04',
+        bgColor: 'rgba(202,138,4,0.15)',
+        borderColor: 'rgba(202,138,4,0.5)',
         timer: 3,
         type: 'accept',
       };
@@ -1304,9 +1304,9 @@ class MarketScene {
       if (poster) {
         poster.bubble = {
           text: '\u{1F91D}',
-          color: '#059669',
-          bgColor: 'rgba(5,150,105,0.15)',
-          borderColor: 'rgba(5,150,105,0.5)',
+          color: '#ca8a04',
+          bgColor: 'rgba(202,138,4,0.15)',
+          borderColor: 'rgba(202,138,4,0.5)',
           timer: 3,
           type: 'accept',
         };
@@ -1387,20 +1387,20 @@ class MarketScene {
           const wanderRadius = 40;
           // Occasionally wander to a stall or meeting spot instead of just near home
           const wanderRoll = Math.random();
-          if (wanderRoll < 0.15 && this.stalls.length > 0) {
-            // Visit a random stall
+          if (wanderRoll < 0.06 && this.stalls.length > 0) {
+            // Rarely visit a nearby stall
             const stall = this.stalls[Math.floor(Math.random() * this.stalls.length)];
             a.targetX = stall.x + stall.w/2 + (Math.random() - 0.5) * 30;
             a.targetY = stall.y + (stall.y < this.centreY ? 45 : -45);
-          } else if (wanderRoll < 0.25 && this._meetingSpots) {
-            // Wander to a meeting spot
+          } else if (wanderRoll < 0.1 && this._meetingSpots) {
+            // Occasionally visit a meeting spot
             const spot = this._meetingSpots[Math.floor(Math.random() * this._meetingSpots.length)];
-            a.targetX = spot.x + (Math.random() - 0.5) * 30;
-            a.targetY = spot.y + (Math.random() - 0.5) * 30;
+            a.targetX = spot.x + (Math.random() - 0.5) * 20;
+            a.targetY = spot.y + (Math.random() - 0.5) * 20;
           } else {
-            // Normal wander near home
-            a.targetX = a.homeX + (Math.random() - 0.5) * wanderRadius * 2;
-            a.targetY = a.homeY + (Math.random() - 0.5) * wanderRadius * 2;
+            // Stay near home — small wander radius
+            a.targetX = a.homeX + (Math.random() - 0.5) * wanderRadius;
+            a.targetY = a.homeY + (Math.random() - 0.5) * wanderRadius;
           }
           // Clamp to canvas
           a.targetX = Math.max(35, Math.min(this.W - 35, a.targetX));
@@ -2892,16 +2892,31 @@ function viewExperimentRun(expId) {
   const cfg = exp.config || {};
   const scenario = cfg.scenario || '';
   const startedAt = exp.started_at || exp.created_at || '';
+  const models = (cfg.models || '').split(',').map(m => m.split(':')[0].trim()).filter(Boolean);
 
-  // Find runs that match this experiment: same scenario, created after experiment started
+  // If experiment is running and we have a live match, show it
+  if (exp.status === 'running' && liveMatch) {
+    return; // already showing live match
+  }
+
+  // Find runs that match this experiment
   const runs = allData.filter(d => d.history && d.history.length);
   let candidates = runs;
 
-  // For suite mode, match any scenario after the experiment started
-  if (cfg.mode !== 'suite' && scenario && scenario !== 'all (suite)') {
+  // Filter by scenario — skip filter for 'all' scenarios (tournament/suite)
+  if (scenario && scenario !== 'all' && scenario !== 'all (suite)' && cfg.mode !== 'suite') {
     candidates = candidates.filter(d => d.scenario === scenario);
   }
 
+  // Filter by models if available
+  if (models.length) {
+    candidates = candidates.filter(d => {
+      const runModels = [...new Set(d.model_assignments || [])];
+      return models.some(m => runModels.includes(m));
+    });
+  }
+
+  // Filter by time — only runs after experiment started
   if (startedAt) {
     candidates = candidates.filter(d => d.timestamp && d.timestamp >= startedAt);
   }
