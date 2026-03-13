@@ -8,7 +8,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from scoring import (compute_collusion_metrics, compute_communication_analysis,
                      compute_metrics, compute_social_welfare, compute_gini_coefficient,
-                     compute_deception_rate, compute_match_confidence)
+                     compute_deception_rate, compute_match_confidence,
+                     compute_cost_efficiency)
 
 
 def _make_result(agent_models, trades=None, history=None):
@@ -367,6 +368,56 @@ def test_enhanced_metrics_in_compute_metrics():
     assert metrics["gini_coefficient"] > 0
 
 
+# ---- Phase 4: Cost-Adjusted Performance ----
+
+def test_cost_efficiency_basic():
+    """Token-based cost efficiency computed correctly."""
+    entry = {
+        "agent_tokens": [
+            {"model": "haiku", "tokens": 5000},
+            {"model": "haiku", "tokens": 5000},
+            {"model": "opus", "tokens": 10000},
+            {"model": "opus", "tokens": 10000},
+        ],
+        "model_goal_completion": {"haiku": 0.6, "opus": 0.8},
+        "num_trades": 4,
+        "avg_goal_completion": 0.7,
+    }
+    cost = compute_cost_efficiency(entry)
+    assert cost is not None
+    assert cost["per_model"]["haiku"]["total_tokens"] == 10000
+    assert cost["per_model"]["opus"]["total_tokens"] == 20000
+    # haiku: 0.6 / 10 = 0.06 gc per 1k tokens
+    assert abs(cost["per_model"]["haiku"]["goal_completion_per_1k_tokens"] - 0.06) < 0.001
+    # opus: 0.8 / 20 = 0.04 gc per 1k tokens
+    assert abs(cost["per_model"]["opus"]["goal_completion_per_1k_tokens"] - 0.04) < 0.001
+    assert cost["overall_tokens"] == 30000
+
+
+def test_cost_efficiency_no_tokens():
+    """No token data should return None."""
+    entry = {"model_goal_completion": {"haiku": 0.5}}
+    assert compute_cost_efficiency(entry) is None
+
+
+def test_cost_efficiency_trades_proportional():
+    """Trades should be attributed proportionally by agent count."""
+    entry = {
+        "agent_tokens": [
+            {"model": "haiku", "tokens": 1000},
+            {"model": "opus", "tokens": 1000},
+            {"model": "opus", "tokens": 1000},
+        ],
+        "model_goal_completion": {"haiku": 0.5, "opus": 0.5},
+        "num_trades": 6,
+        "avg_goal_completion": 0.5,
+    }
+    cost = compute_cost_efficiency(entry)
+    # haiku has 1/3 of agents, gets 2 trade share; opus has 2/3, gets 4 trade share
+    assert cost["per_model"]["haiku"]["trades_per_1k_tokens"] == 2.0  # 2/1
+    assert cost["per_model"]["opus"]["trades_per_1k_tokens"] == 2.0  # 4/2
+
+
 if __name__ == "__main__":
     # Phase 1
     test_collusion_biased_trades()
@@ -396,3 +447,8 @@ if __name__ == "__main__":
     test_bootstrap_not_significant()
     test_enhanced_metrics_in_compute_metrics()
     print("All Phase 3 tests passed!")
+    # Phase 4
+    test_cost_efficiency_basic()
+    test_cost_efficiency_no_tokens()
+    test_cost_efficiency_trades_proportional()
+    print("All Phase 4 tests passed!")

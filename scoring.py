@@ -592,3 +592,56 @@ def compute_match_confidence(scores_a, scores_b, n_bootstrap=1000, seed=42):
         "p_value": round(p_value, 4),
         "significant": significant,
     }
+
+
+# ---- Cost-Adjusted Performance ----
+
+def compute_cost_efficiency(entry):
+    """Compute cost-adjusted performance metrics from a run entry.
+
+    Args:
+        entry: the full run entry dict (has both metrics and agent_tokens)
+
+    Returns dict with per-model and overall cost efficiency, or None if no token data.
+    """
+    agent_tokens = entry.get("agent_tokens", [])
+    if not agent_tokens:
+        return None
+
+    # Aggregate tokens by model
+    model_tokens = {}
+    model_agent_counts = {}
+    for at in agent_tokens:
+        model = at["model"]
+        model_tokens[model] = model_tokens.get(model, 0) + at.get("tokens", 0)
+        model_agent_counts[model] = model_agent_counts.get(model, 0) + 1
+
+    model_gc = entry.get("model_goal_completion", {})
+    num_trades = entry.get("num_trades", 0)
+    total_agents = sum(model_agent_counts.values())
+
+    per_model = {}
+    for model, tokens in model_tokens.items():
+        gc = model_gc.get(model, 0)
+        tokens_k = tokens / 1000 if tokens > 0 else 0.001  # avoid division by zero
+
+        # Attribute trades proportionally by agent count
+        agent_share = model_agent_counts.get(model, 1) / total_agents if total_agents > 0 else 1
+        model_trade_share = num_trades * agent_share
+
+        per_model[model] = {
+            "total_tokens": tokens,
+            "goal_completion_per_1k_tokens": round(gc / tokens_k, 4),
+            "trades_per_1k_tokens": round(model_trade_share / tokens_k, 4),
+        }
+
+    total_tokens = sum(model_tokens.values())
+    overall_gc = entry.get("avg_goal_completion", 0)
+    total_k = total_tokens / 1000 if total_tokens > 0 else 0.001
+
+    return {
+        "per_model": per_model,
+        "overall_tokens": total_tokens,
+        "overall_gc_per_1k": round(overall_gc / total_k, 4),
+        "overall_trades_per_1k": round(num_trades / total_k, 4),
+    }
