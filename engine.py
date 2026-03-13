@@ -26,6 +26,9 @@ class MarketEngine:
         self.simultaneous = simultaneous
         self.run_id = run_id
         self.live_updates = live_updates
+        self.auction_enabled = scenario.get("auction_enabled", False)
+        self.active_auctions = []  # list of active auctions
+        self.next_auction_id = 1
 
     def _has_items(self, agent_idx, items):
         """Check if agent has all specified items."""
@@ -80,6 +83,202 @@ class MarketEngine:
             o for o in self.order_book
             if self._has_items(o["poster"], o["give"])
         ]
+
+    # ---- Auction mechanics ----
+
+    def _visible_auctions(self, agent_idx):
+        """Return auctions visible to this agent."""
+        visible = []
+        for a in self.active_auctions:
+            if a["status"] != "open":
+                continue
+            if a["visible_to"] is not None and agent_idx not in a["visible_to"] and agent_idx != a["auctioneer"]:
+                continue
+            entry = {
+                "auction_id": a["id"],
+                "auctioneer": a["auctioneer"],
+                "give": a["give"],
+                "min_bid": a.get("min_bid", {}),
+                "private": a["visible_to"] is not None,
+                "created_round": a["created_round"],
+            }
+            # Only the auctioneer sees all bids
+            if agent_idx == a["auctioneer"]:
+                entry["bids"] = [{"bidder": b["bidder"], "bid": b["bid"], "round": b["round"]}
+                                 for b in a["bids"]]
+                entry["num_bids"] = len(a["bids"])
+            else:
+                # Other agents only know how many bids exist
+                entry["num_bids"] = len(a["bids"])
+            visible.append(entry)
+        return visible
+
+    def _handle_start_auction(self, agent_idx, turn, round_num, entry):
+        """Handle start_auction action. Returns True if valid."""
+        give = turn.get("give", {})
+        visible_to = turn.get("visible_to")  # list of agent indices or None for public
+        min_bid = turn.get("min_bid", {})
+
+        if not give or not self._has_items(agent_idx, give):
+            entry["invalid"] = True
+            entry["give"] = give
+            return False
+
+        # Validate visible_to
+        if visible_to is not None:
+            if not isinstance(visible_to, list):
+                entry["invalid"] = True
+                return False
+            visible_to = [v for v in visible_to if isinstance(v, int) and 0 <= v < self.num_agents and v != agent_idx]
+            if not visible_to:
+                visible_to = None  # fallback to public
+
+        auction = {
+            "id": self.next_auction_id,
+            "auctioneer": agent_idx,
+            "give": give,
+            "min_bid": min_bid,
+            "visible_to": visible_to,
+            "bids": [],
+            "created_round": round_num,
+            "status": "open",
+        }
+        self.active_auctions.append(auction)
+        entry["auction_id"] = self.next_auction_id
+        entry["give"] = give
+        entry["min_bid"] = min_bid
+        if visible_to is not None:
+            entry["visible_to"] = visible_to
+            entry["private"] = True
+        self.next_auction_id += 1
+        return True
+
+    def _handle_submit_bid(self, agent_idx, turn, round_num, entry):
+        """Handle submit_bid action. Returns True if valid."""
+        auction_id = turn.get("auction_id")
+        bid = turn.get("bid", {})
+
+        # Find the auction
+        auction = None
+        for a in self.active_auctions:
+            if a["id"] == auction_id and a["status"] == "open":
+                auction = a
+                break
+
+        if auction is None:
+            entry["invalid"] = True
+            entry["auction_id"] = auction_id
+            return False
+
+        # Validate: bidder is not the auctioneer
+        if agent_idx == auction["auctioneer"]:
+            entry["invalid"] = True
+            entry["auction_id"] = auction_id
+            return False
+
+        # Validate: bidder is eligible (in visible_to or public)
+        if auction["visible_to"] is not None and agent_idx not in auction["visible_to"]:
+            entry["invalid"] = True
+            entry["auction_id"] = auction_id
+            return False
+
+        # Validate: bidder has the items
+        if not bid or not self._has_items(agent_idx, bid):
+            entry["invalid"] = True
+            entry["auction_id"] = auction_id
+            entry["bid"] = bid
+            return False
+
+        auction["bids"].append({
+            "bidder": agent_idx,
+            "bid": bid,
+            "round": round_num,
+        })
+        entry["auction_id"] = auction_id
+        entry["bid"] = bid
+        return True
+
+    def _handle_close_auction(self, agent_idx, turn, round_num, entry):
+        """Handle close_auction action. Returns True if valid."""
+        auction_id = turn.get("auction_id")
+        accepted_bid_idx = turn.get("accepted_bid_idx")
+        reject_all = turn.get("reject_all", False)
+
+        # Find the auction
+        auction = None
+        for a in self.active_auctions:
+            if a["id"] == auction_id and a["status"] == "open":
+                auction = a
+                break
+
+        if auction is None:
+            entry["invalid"] = True
+            entry["auction_id"] = auction_id
+            return False
+
+        # Only the auctioneer can close
+        if agent_idx != auction["auctioneer"]:
+            entry["invalid"] = True
+            entry["auction_id"] = auction_id
+            return False
+
+        entry["auction_id"] = auction_id
+
+        if reject_all:
+            # Cancel auction — no trade
+            auction["status"] = "cancelled"
+            entry["auction_result"] = "cancelled"
+            return True
+
+        # Accept a specific bid
+        if accepted_bid_idx is None or not isinstance(accepted_bid_idx, int):
+            entry["invalid"] = True
+            return False
+
+        if accepted_bid_idx < 0 or accepted_bid_idx >= len(auction["bids"]):
+            entry["invalid"] = True
+            return False
+
+        winning_bid = auction["bids"][accepted_bid_idx]
+        winner = winning_bid["bidder"]
+        bid_items = winning_bid["bid"]
+
+        # Validate both parties still have the items
+        if not self._has_items(auction["auctioneer"], auction["give"]):
+            entry["invalid"] = True
+            entry["auction_result"] = "auctioneer_lacks_items"
+            auction["status"] = "failed"
+            return False
+
+        if not self._has_items(winner, bid_items):
+            entry["invalid"] = True
+            entry["auction_result"] = "bidder_lacks_items"
+            auction["status"] = "failed"
+            return False
+
+        # Execute the trade
+        self._execute_trade(auction["auctioneer"], winner, auction["give"], bid_items)
+        trade_record = {
+            "round": round_num,
+            "auction_id": auction_id,
+            "poster": auction["auctioneer"],
+            "accepter": winner,
+            "give": auction["give"],
+            "want": bid_items,
+            "auction_trade": True,
+        }
+        self.trades.append(trade_record)
+        auction["status"] = "resolved"
+        entry["trade"] = trade_record
+        entry["auction_result"] = "resolved"
+        entry["winning_bidder"] = winner
+        return True
+
+    def _auto_close_auctions(self):
+        """Auto-close any remaining open auctions at end of match (no trade)."""
+        for a in self.active_auctions:
+            if a["status"] == "open":
+                a["status"] = "expired"
 
     def _write_live(self, initial_inventories, start_time, status="running"):
         """Write current match state to live_match.json for dashboard streaming.
@@ -146,6 +345,7 @@ class MarketEngine:
             self._remove_stale_offers()
 
             visible_book = self._visible_order_book(agent_idx)
+            visible_auctions = self._visible_auctions(agent_idx) if self.auction_enabled else None
             turn = self.agents[agent_idx].take_turn(
                 inventory=self.inventories[agent_idx],
                 target=self.targets[agent_idx],
@@ -153,6 +353,7 @@ class MarketEngine:
                 recent_trades=self.trades[-10:],
                 round_num=round_num,
                 max_rounds=self.max_rounds,
+                auctions=visible_auctions,
             )
 
             action = turn["action"]
@@ -243,6 +444,15 @@ class MarketEngine:
                     entry["invalid"] = True
                     entry["offer_id"] = offer_id
 
+            elif action == "start_auction" and self.auction_enabled:
+                self._handle_start_auction(agent_idx, turn, round_num, entry)
+
+            elif action == "submit_bid" and self.auction_enabled:
+                self._handle_submit_bid(agent_idx, turn, round_num, entry)
+
+            elif action == "close_auction" and self.auction_enabled:
+                self._handle_close_auction(agent_idx, turn, round_num, entry)
+
             elif action == "pass_turn":
                 pass  # nothing to do
 
@@ -259,6 +469,8 @@ class MarketEngine:
         frozen_inventories = copy.deepcopy(self.inventories)
         frozen_order_book = copy.deepcopy(self.order_book)
 
+        frozen_auctions = copy.deepcopy(self.active_auctions) if self.auction_enabled else None
+
         # 2. Parallel LLM calls — each agent sees the frozen snapshot
         def _call_agent(agent_idx):
             visible_book = []
@@ -274,6 +486,8 @@ class MarketEngine:
                     entry["visible_to"] = o["visible_to"]
                 visible_book.append(entry)
 
+            visible_auctions = self._visible_auctions(agent_idx) if self.auction_enabled else None
+
             return self.agents[agent_idx].take_turn(
                 inventory=dict(frozen_inventories[agent_idx]),
                 target=self.targets[agent_idx],
@@ -281,6 +495,7 @@ class MarketEngine:
                 recent_trades=self.trades[-10:],
                 round_num=round_num,
                 max_rounds=self.max_rounds,
+                auctions=visible_auctions,
             )
 
         with ThreadPoolExecutor(max_workers=self.num_agents) as pool:
@@ -386,6 +601,15 @@ class MarketEngine:
                     entry["conflict"] = True
                     entry["offer_id"] = offer_id
 
+            elif action == "start_auction" and self.auction_enabled:
+                self._handle_start_auction(agent_idx, turn, round_num, entry)
+
+            elif action == "submit_bid" and self.auction_enabled:
+                self._handle_submit_bid(agent_idx, turn, round_num, entry)
+
+            elif action == "close_auction" and self.auction_enabled:
+                self._handle_close_auction(agent_idx, turn, round_num, entry)
+
             elif action == "pass_turn":
                 pass  # nothing to do
 
@@ -423,6 +647,10 @@ class MarketEngine:
             all_complete = all(self.goal_completion(i) >= 1.0 for i in range(self.num_agents))
             if all_complete:
                 break
+
+        # Auto-close any remaining open auctions
+        if self.auction_enabled:
+            self._auto_close_auctions()
 
         # Write final status so dashboard knows this run is done
         if self.live_updates:
