@@ -229,13 +229,13 @@ body {
 }
 .agent-card .agent-name { font-weight: 600; font-size: 0.7rem; margin-bottom: 0.1rem; }
 .agent-card .agent-model { font-family: var(--mono); font-size: 0.6rem; color: var(--text2); }
-.agent-card .agent-strat { font-family: var(--mono); font-size: 0.55rem; font-weight: 600; margin-bottom: 0.3rem; }
+.agent-card .agent-strat { font-family: var(--mono); font-size: 0.625rem; font-weight: 600; margin-bottom: 0.3rem; }
 .goal-bar { height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; margin-bottom: 0.2rem; }
 .goal-fill { height: 100%; border-radius: 2px; transition: width 0.3s; }
-.goal-pct { font-family: var(--mono); font-size: 0.55rem; color: var(--text3); }
+.goal-pct { font-family: var(--mono); font-size: 0.625rem; color: var(--text3); }
 .inventory { display: flex; gap: 0.2rem; justify-content: center; flex-wrap: wrap; margin-top: 0.25rem; }
 .inv-item {
-  font-family: var(--mono); font-size: 0.55rem;
+  font-family: var(--mono); font-size: 0.625rem;
   padding: 0.05rem 0.3rem; border-radius: 3px;
   background: var(--surface); border: 1px solid var(--border);
   white-space: nowrap; color: var(--text2);
@@ -286,9 +286,9 @@ body {
 .event .ev-agent { font-family: var(--mono); font-size: 0.65rem; font-weight: 600; white-space: nowrap; min-width: 5rem; }
 .event .ev-action { font-family: var(--mono); font-size: 0.6rem; font-weight: 600; text-transform: uppercase; white-space: nowrap; min-width: 4.5rem; }
 .event .ev-detail { font-size: 0.75rem; color: var(--text2); flex: 1; }
-.ev-post { color: var(--blue); }
-.ev-whisper { color: var(--purple); }
-.ev-accept { color: var(--green); }
+.ev-post { color: #d97706; }
+.ev-whisper { color: #be185d; }
+.ev-accept { color: #ca8a04; }
 .ev-pass { color: var(--text3); }
 .ev-invalid { color: var(--red); }
 
@@ -565,7 +565,7 @@ svg text { font-family: var(--mono); }
   text-overflow: ellipsis;
 }
 .exp-item .exp-badge {
-  font-size: 0.5rem;
+  font-size: 0.575rem;
   font-weight: 700;
   padding: 1px 5px;
   border-radius: 3px;
@@ -601,7 +601,7 @@ svg text { font-family: var(--mono); }
 }
 .exp-ctrl-btn {
   font-family: var(--mono);
-  font-size: 0.55rem;
+  font-size: 0.625rem;
   padding: 1px 6px;
   border: 1px solid var(--border);
   border-radius: 3px;
@@ -712,8 +712,8 @@ svg text { font-family: var(--mono); }
 
 /* ---- Run Selector ---- */
 .run-selector {
-  width: 220px;
-  min-width: 220px;
+  width: 260px;
+  min-width: 260px;
   max-height: 420px;
   background: var(--surface);
   border: 1px solid var(--border);
@@ -781,9 +781,8 @@ svg text { font-family: var(--mono); }
 }
 .run-item .ri-models {
   font-family: var(--mono);
-  font-size: 0.58rem;
+  font-size: 0.625rem;
   color: var(--text2);
-  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -791,7 +790,7 @@ svg text { font-family: var(--mono); }
   display: flex;
   justify-content: space-between;
   font-family: var(--mono);
-  font-size: 0.52rem;
+  font-size: 0.6rem;
   color: var(--text3);
   margin-top: 2px;
 }
@@ -952,8 +951,8 @@ svg text { font-family: var(--mono); }
 <div class="summary-bar" id="summary"></div>
 
 <!-- ==================== ANALYTICS CHARTS ==================== -->
-<div style="margin-top:1.5rem;border-top:1px solid var(--border);padding-top:1.5rem">
-  <div class="card-label" style="margin-bottom:1rem">analytics across all runs</div>
+<div style="margin-top:2.5rem;border-top:1px solid var(--border);padding-top:2rem">
+  <h2 style="font-size:1rem;font-weight:600;margin:0 0 0.75rem;letter-spacing:-0.02em;color:var(--text)">Aggregate Analytics</h2>
   <div class="filters" id="scenarioFilters" style="display:flex;gap:0.35rem;margin-bottom:1rem;flex-wrap:wrap"></div>
 
   <div class="card" style="margin-bottom:1rem">
@@ -980,6 +979,17 @@ svg text { font-family: var(--mono); }
     <div class="card">
       <div class="card-label">avg invalid rate by model</div>
       <svg id="chartInvalid" viewBox="0 0 460 200" preserveAspectRatio="xMidYMid meet" style="width:100%;display:block"></svg>
+    </div>
+  </div>
+
+  <div class="content-grid">
+    <div class="card">
+      <div class="card-label">avg pareto efficiency by model</div>
+      <svg id="chartPareto" viewBox="0 0 460 200" preserveAspectRatio="xMidYMid meet" style="width:100%;display:block"></svg>
+    </div>
+    <div class="card">
+      <div class="card-label">head-to-head win rate</div>
+      <table id="h2hTable" style="width:100%"></table>
     </div>
   </div>
 
@@ -1222,7 +1232,7 @@ class MarketScene {
     const el = document.getElementById('marketStatus');
     if (!el) return;
     if (runData) {
-      el.textContent = `replay &mdash; ${runData.scenario || 'match'} #${runData.run_id || ''}`;
+      el.textContent = `replay \u2014 ${runData.scenario || 'match'} #${runData.run_id || ''}`;
     } else {
       el.textContent = 'waiting for match...';
     }
@@ -1475,17 +1485,17 @@ class MarketScene {
     }
     this.particles = this.particles.filter(p => p.life > 0);
 
-    // Fountain water drops
-    if (Math.random() < dt * 6) {
+    // Fountain water drops (reduced)
+    if (Math.random() < dt * 1.5) {
       const angle = Math.random() * Math.PI * 2;
-      const speed = 12 + Math.random() * 18;
+      const speed = 6 + Math.random() * 10;
       this.fountainDrops.push({
         x: this.centreX,
         y: this.centreY,
         vx: Math.cos(angle) * speed,
-        vy: -25 - Math.random() * 20,
-        life: 1.0,
-        size: 0.8 + Math.random() * 1.2,
+        vy: -15 - Math.random() * 10,
+        life: 0.8,
+        size: 0.6 + Math.random() * 0.8,
       });
     }
     for (const d of this.fountainDrops) {
@@ -1551,62 +1561,43 @@ class MarketScene {
       ctx.fill();
     }
 
-    // Fountain — outer stone basin
+    // Fountain — compact stone basin
     const fx = this.centreX, fy = this.centreY;
-    ctx.fillStyle = 'rgba(0,0,0,0.12)';
+    ctx.fillStyle = 'rgba(0,0,0,0.10)';
     ctx.beginPath();
-    ctx.ellipse(fx + 2, fy + 3, 30, 28, 0, 0, Math.PI * 2);
+    ctx.ellipse(fx + 1, fy + 2, 20, 18, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = 'hsl(0, 0%, 42%)';
     ctx.beginPath();
-    ctx.arc(fx, fy, 28, 0, Math.PI * 2);
+    ctx.arc(fx, fy, 18, 0, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = 'hsl(0, 0%, 52%)';
     ctx.beginPath();
-    ctx.arc(fx, fy, 25, 0, Math.PI * 2);
+    ctx.arc(fx, fy, 16, 0, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = 'hsl(0, 0%, 35%)';
     ctx.beginPath();
-    ctx.arc(fx, fy, 22, 0, Math.PI * 2);
+    ctx.arc(fx, fy, 14, 0, Math.PI * 2);
     ctx.fill();
     // Animated water
     const shimmer = Math.sin(this.time * 2) * 4;
     ctx.fillStyle = `hsl(205, 55%, ${38 + shimmer}%)`;
     ctx.beginPath();
-    ctx.arc(fx, fy, 20, 0, Math.PI * 2);
+    ctx.arc(fx, fy, 12, 0, Math.PI * 2);
     ctx.fill();
-    // Surface highlight
-    ctx.fillStyle = `hsla(200, 70%, 70%, ${0.2 + Math.sin(this.time * 3) * 0.1})`;
+    // Single ripple
+    const rippleR = 4 + ((this.time * 5) % 10);
+    const rippleA = Math.max(0, 0.2 - (rippleR - 4) / 10 * 0.2);
+    ctx.strokeStyle = `hsla(200, 60%, 65%, ${rippleA})`;
+    ctx.lineWidth = 0.5;
     ctx.beginPath();
-    ctx.ellipse(fx - 5, fy - 4, 8, 5, -0.3, 0, Math.PI * 2);
-    ctx.fill();
-    // Ripple rings
-    for (let r = 0; r < 3; r++) {
-      const rippleR = 6 + ((this.time * 6 + r * 7) % 16);
-      const rippleA = Math.max(0, 0.25 - (rippleR - 6) / 16 * 0.2);
-      ctx.strokeStyle = `hsla(200, 60%, 65%, ${rippleA})`;
-      ctx.lineWidth = 0.5;
-      ctx.beginPath();
-      ctx.arc(fx, fy, rippleR, 0, Math.PI * 2);
-      ctx.stroke();
-    }
+    ctx.arc(fx, fy, rippleR, 0, Math.PI * 2);
+    ctx.stroke();
     // Centre spout
     ctx.fillStyle = 'hsl(0, 0%, 48%)';
     ctx.beginPath();
-    ctx.arc(fx, fy, 5, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = 'hsl(0, 0%, 58%)';
-    ctx.beginPath();
     ctx.arc(fx, fy, 3, 0, Math.PI * 2);
     ctx.fill();
-    // Fountain water drops
-    for (const d of this.fountainDrops) {
-      ctx.globalAlpha = d.life * 0.7;
-      ctx.fillStyle = 'hsl(200, 65%, 72%)';
-      ctx.beginPath();
-      ctx.arc(d.x, d.y, d.size, 0, Math.PI * 2);
-      ctx.fill();
-    }
     ctx.globalAlpha = 1;
 
     // Stalls
@@ -1712,11 +1703,19 @@ class MarketScene {
         ctx.stroke();
       }
 
-      // Label below
-      ctx.font = 'bold 9px ' + getComputedStyle(document.body).getPropertyValue('--mono');
+      // Label below with background pill
+      const labelFont = 'bold 10px ' + getComputedStyle(document.body).getPropertyValue('--mono');
+      ctx.font = labelFont;
       ctx.textAlign = 'center';
-      ctx.fillStyle = 'rgba(255,255,255,0.85)';
-      ctx.fillText(a.label, a.x, ay + 26);
+      const labelW = ctx.measureText(a.label).width + 8;
+      const labelX = a.x - labelW / 2;
+      const labelY = ay + 19;
+      ctx.fillStyle = 'rgba(0,0,0,0.55)';
+      ctx.beginPath();
+      ctx.roundRect(labelX, labelY, labelW, 13, 3);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.95)';
+      ctx.fillText(a.label, a.x, ay + 29);
 
       // Speech bubble
       if (a.bubble) {
@@ -2456,6 +2455,8 @@ function renderAnalytics() {
   renderEloChart();
   renderTradesChart();
   renderInvalidChart();
+  renderParetoChart();
+  renderH2HTable();
   renderHistory();
 }
 
@@ -2622,6 +2623,69 @@ function renderInvalidChart() {
     m => `${m.model}: ${(m.avg * 100).toFixed(1)}% avg invalid (${m.count} runs)`,
     () => '#dc2626'
   );
+}
+
+function renderParetoChart() {
+  const data = filtered();
+  const agg = {};
+  data.forEach(d => {
+    const pe = d.pareto_efficiency;
+    if (pe == null) return;
+    const models = Object.keys(getGoalCompletion(d) || {});
+    models.forEach(model => {
+      if (!agg[model]) agg[model] = { sum: 0, count: 0 };
+      agg[model].sum += pe;
+      agg[model].count++;
+    });
+  });
+  const models = Object.entries(agg)
+    .filter(([, v]) => v.count > 0)
+    .map(([model, v]) => ({ model, avg: v.sum / v.count, count: v.count }))
+    .sort((a, b) => b.avg - a.avg);
+  if (!models.length) { const el = document.getElementById('chartPareto'); if (el) el.innerHTML = ''; return; }
+  const maxVal = Math.min(Math.max(...models.map(m => m.avg), 0.01) * 1.15, 1.0);
+  renderHorizontalBarChart('chartPareto', models, maxVal,
+    v => (v * 100).toFixed(0) + '%',
+    m => `${m.model}: ${(m.avg * 100).toFixed(1)}% avg Pareto efficiency (${m.count} runs)`,
+    m => gc(m.model)
+  );
+}
+
+function renderH2HTable() {
+  const el = document.getElementById('h2hTable');
+  if (!el) return;
+  if (!matchLog.length) { el.innerHTML = '<tr><td class="empty-state">no match data</td></tr>'; return; }
+
+  // Build win matrix
+  const models = [...new Set(matchLog.flatMap(m => [m.model_a, m.model_b]))].sort();
+  const wins = {};
+  const total = {};
+  models.forEach(a => { wins[a] = {}; total[a] = {}; models.forEach(b => { wins[a][b] = 0; total[a][b] = 0; }); });
+  matchLog.forEach(m => {
+    total[m.model_a][m.model_b]++;
+    total[m.model_b][m.model_a]++;
+    if (m.winner === m.model_a) { wins[m.model_a][m.model_b]++; }
+    else if (m.winner === m.model_b) { wins[m.model_b][m.model_a]++; }
+    else { wins[m.model_a][m.model_b] += 0.5; wins[m.model_b][m.model_a] += 0.5; }
+  });
+
+  let html = '<thead><tr><th></th>' + models.map(m => `<th class="r" style="font-size:0.65rem">${m}</th>`).join('') + '</tr></thead><tbody>';
+  models.forEach(a => {
+    html += '<tr><td style="font-weight:600;font-size:0.65rem">' + a + '</td>';
+    models.forEach(b => {
+      if (a === b) { html += '<td class="r" style="color:var(--text3)">-</td>'; }
+      else if (total[a][b] === 0) { html += '<td class="r" style="color:var(--text3)">-</td>'; }
+      else {
+        const wr = wins[a][b] / total[a][b];
+        const pct = (wr * 100).toFixed(0);
+        const bg = wr > 0.55 ? 'rgba(5,150,105,0.12)' : wr < 0.45 ? 'rgba(220,38,38,0.12)' : '';
+        html += `<td class="r" style="font-size:0.65rem;background:${bg}">${pct}%<span style="color:var(--text3);font-size:0.55rem"> (${total[a][b]})</span></td>`;
+      }
+    });
+    html += '</tr>';
+  });
+  html += '</tbody>';
+  el.innerHTML = html;
 }
 
 function renderHistory() {
