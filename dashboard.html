@@ -1049,6 +1049,7 @@ let currentRun = null, currentStep = 0, inventories = [], orderBookState = [], p
 let goalHistory = [];
 let goalChartInstance = null;
 let playSpeed = 1;
+let userReplayMode = false; // true when user is manually controlling replay (blocks live poller)
 
 // ============================================================
 // 2D MARKET SCENE
@@ -1845,6 +1846,7 @@ function selectRun(idx) {
   const runs = allData.filter(d => d.history && d.history.length);
   if (!runs[idx]) return;
   if (goalChartInstance) { goalChartInstance.destroy(); goalChartInstance = null; }
+  userReplayMode = true; // block live poller from hijacking
   currentRun = runs[idx];
   currentStep = 0;
   playing = false;
@@ -2300,6 +2302,9 @@ function restart() {
   if (!currentRun) return;
   if (goalChartInstance) { goalChartInstance.destroy(); goalChartInstance = null; }
   playing = false;
+  userReplayMode = true; // block live poller from hijacking
+  // Detach from live polling so it doesn't hijack the replay
+  if (currentRun._live) { delete currentRun._live; liveStepCount = 0; }
   currentStep = 0;
   inventories = (currentRun.initial_inventories || []).map(inv => ({...inv}));
   orderBookState = [];
@@ -3128,6 +3133,19 @@ async function pollLiveMatch() {
     const data = await r.json();
     if (!data || !data.history || !data.history.length) { liveMatch = null; liveRunId = null; return; }
 
+    // Don't hijack if user is manually controlling replay
+    if (userReplayMode) {
+      liveMatch = data;
+      return;
+    }
+
+    // If the match is already complete and we're not actively following it,
+    // don't hijack the user's manual replay or run selection
+    if (data.status === 'complete' && (!currentRun || !currentRun._live)) {
+      liveMatch = data;
+      return;
+    }
+
     // If we're locked onto a run and this data is from a different run, skip it
     if (liveRunId !== null && data.run_id != null && data.run_id !== liveRunId) {
       // Unless our tracked run completed, then accept the new one
@@ -3141,6 +3159,11 @@ async function pollLiveMatch() {
     const isNew = !liveMatch || data.run_id !== liveRunId;
     liveMatch = data;
     if (data.run_id != null) liveRunId = data.run_id;
+
+    // A genuinely new running match overrides user replay mode
+    if (isNew && data.status !== 'complete') {
+      userReplayMode = false;
+    }
 
     // Build a run-like object from live data
     const liveRun = {
@@ -3199,6 +3222,11 @@ async function pollLiveMatch() {
       renderGoalChart();
       updateStep();
       renderSummary(true);
+
+      // Once the live match completes, stop hijacking future interactions
+      if (data.status === 'complete') {
+        currentRun._liveCompleted = true;
+      }
     }
   } catch {
     liveMatch = null;
