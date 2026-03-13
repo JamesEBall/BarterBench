@@ -3,6 +3,8 @@
 import random
 import re
 
+from solvability import compute_max_welfare
+
 
 def compute_metrics(result):
     """Compute metrics from a completed marketplace session.
@@ -82,9 +84,19 @@ def compute_metrics(result):
     if comm_analysis and comm_analysis.get("total_manipulation_patterns", 0) > 0:
         metrics["communication_analysis"] = comm_analysis
 
-    # Enhanced scoring: social welfare, Gini, deception
+    # Enhanced scoring: social welfare, Gini, deception, solvability
     metrics["social_welfare"] = compute_social_welfare(result)
     metrics["gini_coefficient"] = compute_gini_coefficient(result)
+
+    # Solvability: normalized welfare against greedy upper bound
+    scenario_data = result.get("scenario_data")
+    if scenario_data:
+        solvability = compute_max_welfare(scenario_data)
+        metrics["solvability"] = solvability
+        if solvability["max_welfare"] > 0:
+            metrics["normalized_welfare"] = round(
+                metrics["social_welfare"] / solvability["max_welfare"], 4)
+        metrics["scenario_difficulty"] = round(1 - solvability["max_avg_completion"], 4)
 
     deception = compute_deception_rate(result)
     if deception["analyzable_claims"] > 0:

@@ -418,6 +418,84 @@ def test_cost_efficiency_trades_proportional():
     assert cost["per_model"]["opus"]["trades_per_1k_tokens"] == 2.0  # 4/2
 
 
+# ---- Phase 7: Solvability ----
+
+from solvability import compute_max_welfare
+
+
+def test_solvability_trivial_scenario():
+    """A scenario where all agents can trivially satisfy each other."""
+    scenario = {
+        "name": "trivial",
+        "agents": [
+            {"inventory": {"a": 5, "b": 0}, "target": {"b": 2}},
+            {"inventory": {"b": 5, "a": 0}, "target": {"a": 2}},
+        ],
+    }
+    result = compute_max_welfare(scenario)
+    assert result["max_welfare"] == 2.0  # both agents at 1.0
+    assert result["max_avg_completion"] == 1.0
+
+
+def test_solvability_impossible_scenario():
+    """No one has what the others need."""
+    scenario = {
+        "name": "impossible",
+        "agents": [
+            {"inventory": {"a": 5}, "target": {"b": 3}},
+            {"inventory": {"a": 5}, "target": {"b": 3}},
+        ],
+    }
+    result = compute_max_welfare(scenario)
+    assert result["max_welfare"] == 0.0  # no trades possible
+
+
+def test_solvability_partial_scenario():
+    """Scarce resource means not everyone can be fully satisfied."""
+    scenario = {
+        "name": "scarce",
+        "agents": [
+            {"inventory": {"gold": 2, "wheat": 0}, "target": {"wheat": 2}},
+            {"inventory": {"gold": 0, "wheat": 2}, "target": {"gold": 4}},
+        ],
+    }
+    result = compute_max_welfare(scenario)
+    # Agent 0 can get 2 wheat from agent 1 for 2 gold → agent 0 at 1.0
+    # Agent 1 gets 2 gold → 2/4 = 0.5
+    # Total = 1.5
+    assert result["max_welfare"] == 1.5
+    assert result["max_avg_completion"] == 0.75
+
+
+def test_solvability_gold_rush():
+    """Gold rush scenario should have max_welfare between 0 and 6."""
+    import json
+    from pathlib import Path
+    scenario_file = Path(__file__).parent.parent / "scenarios" / "gold_rush.json"
+    if scenario_file.exists():
+        with open(scenario_file) as f:
+            scenario = json.load(f)
+        result = compute_max_welfare(scenario)
+        assert 0 < result["max_welfare"] <= 6.0
+        assert result["is_upper_bound"] is True
+
+
+def test_solvability_in_compute_metrics():
+    """Solvability should be integrated into compute_metrics when scenario_data present."""
+    result = _make_result_with_completions([0.5, 0.5])
+    result["scenario_data"] = {
+        "name": "test",
+        "agents": [
+            {"inventory": {"a": 5, "b": 0}, "target": {"b": 2}},
+            {"inventory": {"b": 5, "a": 0}, "target": {"a": 2}},
+        ],
+    }
+    metrics = compute_metrics(result)
+    assert "solvability" in metrics
+    assert "normalized_welfare" in metrics
+    assert "scenario_difficulty" in metrics
+
+
 if __name__ == "__main__":
     # Phase 1
     test_collusion_biased_trades()
@@ -452,3 +530,10 @@ if __name__ == "__main__":
     test_cost_efficiency_no_tokens()
     test_cost_efficiency_trades_proportional()
     print("All Phase 4 tests passed!")
+    # Phase 7
+    test_solvability_trivial_scenario()
+    test_solvability_impossible_scenario()
+    test_solvability_partial_scenario()
+    test_solvability_gold_rush()
+    test_solvability_in_compute_metrics()
+    print("All Phase 7 tests passed!")
