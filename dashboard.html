@@ -2674,7 +2674,7 @@ function renderHorizontalBarChart(svgId, models, maxVal, formatLabel, formatTool
     const x = p.l + (i / 4) * pw;
     const v = (i / 4) * maxVal;
     svg.innerHTML += `<line x1="${x}" y1="${p.t}" x2="${x}" y2="${H - p.b}" stroke="#e5e7eb" stroke-width="1"/>`;
-    svg.innerHTML += `<text x="${x}" y="${H - p.b + 12}" text-anchor="middle" fill="#9ca3af" font-size="8">${formatLabel(v)}</text>`;
+    svg.innerHTML += `<text x="${x}" y="${H - p.b + 12}" text-anchor="middle" fill="#6b7280" font-size="8">${formatLabel(v)}</text>`;
   }
 
   models.forEach((m, i) => {
@@ -2709,7 +2709,7 @@ function renderDivergingBarChart(svgId, models, midVal, formatLabel, formatToolt
     const v = midVal - maxDev + (i / 4) * 2 * maxDev;
     const x = cx + (v - midVal) / maxDev * half;
     svg.innerHTML += `<line x1="${x}" y1="${p.t}" x2="${x}" y2="${H - p.b}" stroke="#e5e7eb" stroke-width="1"/>`;
-    svg.innerHTML += `<text x="${x}" y="${H - p.b + 12}" text-anchor="middle" fill="#9ca3af" font-size="8">${formatLabel(v)}</text>`;
+    svg.innerHTML += `<text x="${x}" y="${H - p.b + 12}" text-anchor="middle" fill="#6b7280" font-size="8">${formatLabel(v)}</text>`;
   }
   // Centre line
   svg.innerHTML += `<line x1="${cx}" y1="${p.t}" x2="${cx}" y2="${H - p.b}" stroke="#9ca3af" stroke-width="1" stroke-dasharray="4,3"/>`;
@@ -2721,7 +2721,7 @@ function renderDivergingBarChart(svgId, models, midVal, formatLabel, formatToolt
     const barX = Math.min(cx, barEnd);
     const barW = Math.max(Math.abs(barEnd - cx), 2);
     const color = gc(m.model);
-    const opacity = m.avg >= midVal ? 0.85 : 0.5;
+    const opacity = m.avg >= midVal ? 0.85 : 0.65;
     svg.innerHTML += `<text x="${p.l - 6}" y="${y + barH / 2 + 3}" text-anchor="end" fill="#6b7280" font-size="9">${m.model}</text>`;
     svg.innerHTML += `<rect x="${barX}" y="${y}" width="${barW}" height="${barH}" rx="3" fill="${color}" opacity="${opacity}"><title>${formatTooltip(m)}</title></rect>`;
     if (m.avg >= midVal) {
@@ -2753,14 +2753,12 @@ function renderISSChart(svgId, models) {
     const v = i / 4;
     const x = p.l + v * pw;
     svg.innerHTML += `<line x1="${x}" y1="${p.t}" x2="${x}" y2="${H - p.b}" stroke="#e5e7eb" stroke-width="1"/>`;
-    svg.innerHTML += `<text x="${x}" y="${H - p.b + 12}" text-anchor="middle" fill="#9ca3af" font-size="8">${(v * 100).toFixed(0)}%</text>`;
+    svg.innerHTML += `<text x="${x}" y="${H - p.b + 12}" text-anchor="middle" fill="#6b7280" font-size="8">${(v * 100).toFixed(0)}%</text>`;
   }
-  // Random baseline
+  // Random baseline — label sits above the line, right-aligned so it doesn't crowd the left axis
   const bx = Math.round(p.l + RANDOM_BASELINE * pw);
   svg.innerHTML += `<line x1="${bx}" y1="${p.t}" x2="${bx}" y2="${H - p.b}" stroke="#9ca3af" stroke-width="1" stroke-dasharray="4,3" opacity="0.9"/>`;
-  svg.innerHTML += `<text x="${bx + 3}" y="${p.t - 5}" fill="#9ca3af" font-size="7.5">random (14%)</text>`;
-  // Axis label
-  svg.innerHTML += `<text x="${p.l}" y="${p.t - 5}" text-anchor="start" fill="#9ca3af" font-size="7">← reveals immediately</text>`;
+  svg.innerHTML += `<text x="${bx - 3}" y="${p.t - 5}" text-anchor="end" fill="#9ca3af" font-size="7.5">random baseline</text>`;
 
   sorted.forEach((m, i) => {
     const cy = p.t + (i + 0.5) * rowH;
@@ -2811,7 +2809,7 @@ function renderEloChart() {
   for (let v = Math.ceil(chartMin / step) * step; v <= chartMax; v += step) {
     const x = p.l + ((v - chartMin) / chartRange) * pw;
     svg.innerHTML += `<line x1="${x}" y1="${p.t}" x2="${x}" y2="${H - p.b}" stroke="#e5e7eb" stroke-width="1"/>`;
-    svg.innerHTML += `<text x="${x}" y="${H - p.b + 12}" text-anchor="middle" fill="#9ca3af" font-size="8">${v}</text>`;
+    svg.innerHTML += `<text x="${x}" y="${H - p.b + 12}" text-anchor="middle" fill="#6b7280" font-size="8">${v}</text>`;
   }
   // 1500 baseline
   const x1500 = p.l + ((1500 - chartMin) / chartRange) * pw;
