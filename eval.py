@@ -315,7 +315,7 @@ def print_benchmark_leaderboard(run_entries, anchor):
 
 
 def run_benchmark(scenario_name, anchor, test_models, runs, verbose,
-                  simultaneous=False, parallel=1, temperature=1.0, history_rounds=3):
+                  simultaneous=False, parallel=1, temperature=1.0, history_rounds=-1):
     """Run benchmark mode: test models against anchor in a single scenario."""
     procedural = scenario_name == "procedural"
 
@@ -400,7 +400,7 @@ def run_benchmark(scenario_name, anchor, test_models, runs, verbose,
 # ---- Cross-provider matrix (all pairs) ----
 
 def run_matrix(models, runs_per_pair, verbose, simultaneous=False, parallel=1,
-               temperature=1.0, history_rounds=3):
+               temperature=1.0, history_rounds=-1):
     """Run round-robin pairwise comparisons across all model pairs.
 
     For N models, runs N*(N-1)/2 pairwise matchups on procedural scenarios.
@@ -480,7 +480,7 @@ def run_matrix(models, runs_per_pair, verbose, simultaneous=False, parallel=1,
 # ---- Run a single match (model vs model) ----
 
 def run_single(scenario_name, scenario, model_config, model_config_str, run_id, verbose,
-               simultaneous=False, live_updates=True, temperature=1.0, history_rounds=3):
+               simultaneous=False, live_updates=True, temperature=1.0, history_rounds=-1):
     """Run a single marketplace match. Returns the result entry."""
     # Seed RNG for reproducibility — use a local Random instance for thread-safety
     # (module-level random.seed() is not safe when parallel=N > 1)
@@ -756,7 +756,7 @@ def _generate_scenario_for_eval(num_agents, run_seed=None):
 
 
 def run_eval(scenario_name, model_config_str, runs, verbose,
-             simultaneous=False, parallel=1, temperature=1.0, history_rounds=3):
+             simultaneous=False, parallel=1, temperature=1.0, history_rounds=-1):
     """Run eval for a single scenario. Use scenario_name='procedural' for fresh generated scenarios."""
     procedural = scenario_name == "procedural"
     model_config = parse_model_config(model_config_str)
@@ -824,7 +824,7 @@ def run_eval(scenario_name, model_config_str, runs, verbose,
 
 
 def run_tournament(model_a, model_b, runs_per_scenario, verbose,
-                   simultaneous=False, parallel=1, temperature=1.0, history_rounds=3):
+                   simultaneous=False, parallel=1, temperature=1.0, history_rounds=-1):
     """Run a full tournament: model_a vs model_b across all scenarios."""
     scenarios = list_scenarios()
     if not scenarios:
@@ -1433,7 +1433,7 @@ def run_suite(test_models, verbose):
                 print(f"\n  Run {run_num + 1}/{runs_per} (match {match_num}/{total})")
                 entry = run_single(scenario_name, scenario, model_config, model_config_str,
                                    run_id, verbose, simultaneous=False, live_updates=True,
-                                   history_rounds=3)
+                                   history_rounds=-1)
                 entry["mode"] = "suite"
                 entry["anchor_model"] = anchor
                 _locked_append_result(entry, RESULTS_FILE)
@@ -1925,8 +1925,8 @@ def main():
                         help="Number of scarce items for generated scenario (default: 1)")
     parser.add_argument("--gen-seed", type=int, default=None,
                         help="Seed for procedural scenario generation")
-    parser.add_argument("--history-rounds", type=int, default=3,
-                        help="Number of past rounds to include in agent conversation history (default: 3)")
+    parser.add_argument("--history-rounds", type=int, default=-1,
+                        help="Past rounds to include in agent history (-1 = all rounds, default: -1)")
     parser.add_argument("--resume", nargs="?", const="checkpoint.json", default=None,
                         help="Resume from checkpoint file (default: checkpoint.json)")
     # Analysis & reporting

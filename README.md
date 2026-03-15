@@ -564,11 +564,11 @@ python3 eval.py --benchmark --models sonnet --runs 5 --temperature 0.3
 
 ### History Depth
 
-Control how many past rounds agents remember (default 3):
+Agents see their full round history by default (`-1` = all rounds). Pass a positive integer to cap it — useful for cost-sensitive ablations:
 
 ```bash
-python3 eval.py --eval gold_rush --models haiku:3,sonnet:3 --history-rounds 5
-python3 eval.py --benchmark --models sonnet --runs 3 --history-rounds 1  # minimal memory
+python3 eval.py --benchmark --models sonnet --runs 3 --history-rounds 1  # minimal memory (ablation)
+python3 eval.py --benchmark --models sonnet --runs 3 --history-rounds 5  # 5-round window
 ```
 
 ### Procedural Scenario Generation

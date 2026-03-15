@@ -331,7 +331,7 @@ class MarketAgent:
     def __init__(self, model_name: str, agent_idx: int, backend: str = "auto",
                  strategy_id: str = None, strategy_prompt: str = None,
                  temperature: float = 1.0, auction_enabled: bool = False,
-                 history_rounds: int = 3):
+                 history_rounds: int = -1):
         self.model_name = model_name
         self.agent_idx = agent_idx
         self.strategy_id = strategy_id
@@ -475,10 +475,11 @@ class MarketAgent:
                                  "content": f"Action executed: {tool_name}"}]
                 })
 
-        # Cap history to control token usage (6 items per round: user + assistant + tool_result × 2 exchanges)
-        max_history_items = self.history_rounds * 6
-        if len(self.conversation_history) > max_history_items:
-            self.conversation_history = self.conversation_history[-max_history_items:]
+        # Cap history to control token usage (-1 = keep all rounds)
+        if self.history_rounds >= 0:
+            max_history_items = self.history_rounds * 6
+            if len(self.conversation_history) > max_history_items:
+                self.conversation_history = self.conversation_history[-max_history_items:]
 
         result = {
             "action": tool_name,
@@ -655,7 +656,8 @@ class MarketAgent:
         if not self.round_history:
             return ""
         lines = ["\n## Your Previous Actions (memory)"]
-        for rnd, summary in self.round_history[-(self.history_rounds * 2):]:  # configurable history depth
+        history = self.round_history if self.history_rounds < 0 else self.round_history[-(self.history_rounds * 2):]
+        for rnd, summary in history:
             lines.append(f"  Round {rnd}: {summary}")
         return "\n".join(lines)
 
