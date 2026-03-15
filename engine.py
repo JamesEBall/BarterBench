@@ -32,6 +32,8 @@ class MarketEngine:
 
     def _has_items(self, agent_idx, items):
         """Check if agent has all specified items."""
+        if not isinstance(items, dict):
+            return False
         for item, qty in items.items():
             if not isinstance(qty, (int, float)) or qty <= 0:
                 return False
@@ -41,6 +43,8 @@ class MarketEngine:
 
     def _has_items_snapshot(self, inventory_dict, items):
         """Check if an inventory dict has all specified items (for simultaneous mode)."""
+        if not isinstance(items, dict):
+            return False
         for item, qty in items.items():
             if not isinstance(qty, (int, float)) or qty <= 0:
                 return False
