@@ -1,19 +1,36 @@
 # BarterBench
 
+![Python](https://img.shields.io/badge/python-3.10%2B-blue)
+![License](https://img.shields.io/badge/license-MIT-green)
+![Backend](https://img.shields.io/badge/backend-OpenRouter-orange)
+
 ![BarterBench Dashboard](docs/dashboard.png)
 
-A competitive marketplace benchmark for AI agents with ELO ratings. N agents trade scarce resources through an order book across fixed rounds. Models are pitted head-to-head and rated via pairwise ELO — new models can be introduced at any time without re-running existing matches. Works with any LLM or agent framework.
+A competitive marketplace benchmark for AI agents with ELO ratings. N agents trade scarce resources through an order book across fixed rounds. Models are pitted head-to-head and rated via pairwise ELO — new models can be introduced at any time without re-running existing matches. Works with any LLM via OpenRouter.
 
 **Three modes:**
 - **Eval Suite** — one-click standardized evaluation. Runs a model against a haiku anchor on Spice Wars (10 runs), producing ELO + composite scores with 95% CIs. Always include `random` as floor baseline. `python3 eval.py --suite --models random,sonnet`
 - **Benchmark** — compare models head-to-head with a shared anchor. `python3 eval.py --benchmark --models sonnet,gpt-4o --runs 5`
 - **Arena** — compare prompt strategies across models. Contestants are (strategy, model) pairs. "Who can write the best barter agent prompt?"
 
+## Table of Contents
+
+- [Leaderboard](#leaderboard)
+- [1. Motivation](#1-motivation)
+- [2. Problem Formulation](#2-problem-formulation)
+- [3. Scenarios](#3-scenarios)
+- [4. Scoring](#4-scoring)
+- [5. Rating Systems](#5-rating-systems)
+- [6. Installation](#6-installation)
+- [7. Quick Start](#7-quick-start)
+- [8. Built-in Strategies](#8-built-in-strategies)
+- [9. Information Model](#9-information-model)
+- [10. Architecture](#10-architecture)
+- [Citation](#citation)
+
 ## Leaderboard
 
-| Contestant | ELO | W | L | D | Matches |
-|---|---|---|---|---|---|
-| *Running...* | | | | | |
+Run `python3 eval.py --report` to generate the leaderboard from your local results, or `python3 eval.py --report --json` for machine-readable output.
 
 ## 1. Motivation
 
@@ -37,7 +54,7 @@ Early results reveal a consistent failure mode across all tested models: **coope
 
 This finding connects to a broader pattern in LLM strategic reasoning:
 
-| Paper | Setting | Failure mode |
+| Benchmark | Setting | Failure mode |
 |---|---|---|
 | [PACT](https://github.com/lechmazur/pact) (lechmazur) | Cooperative tasks | LLMs cooperate well when framing is clearly cooperative |
 | [Emergent Collusion](https://github.com/lechmazur/emergent_collusion/) (lechmazur) | Price-setting auctions (finance framing) | LLMs *over-strategise* — spontaneous cartel formation (Grok 4: 75%) |
@@ -396,7 +413,7 @@ In early results, all tested models (including the strongest frontier models) ac
 
 For cross-run model comparisons, 1000-resample bootstrap confidence intervals with p-values determine whether score differences are statistically significant.
 
-### 4.14 Additional Metrics
+### 4.15 Additional Metrics
 
 | Metric | Description |
 |---|---|
@@ -442,11 +459,11 @@ Each match proceeds as follows:
 5. Compare average goal completion → determine winner
 6. Update ELO ratings
 
-### 5.3 Tournament Protocol
+### 5.4 Tournament Protocol
 
 A full tournament runs all contestant pairs across scenarios, multiple times each. Ratings converge after approximately 15–20 matches.
 
-### 5.4 Introducing New Contestants
+### 5.5 Introducing New Contestants
 
 A key property of Elo ratings: **new contestants can be added at any time** without invalidating existing ratings. To benchmark a new model or strategy:
 
@@ -454,7 +471,24 @@ A key property of Elo ratings: **new contestants can be added at any time** with
 2. After ~15–20 matches, its rating stabilizes
 3. No existing data needs to be re-run
 
-## 6. Quick Start
+## 6. Installation
+
+```bash
+git clone https://github.com/JamesEBall/BarterBench.git
+cd BarterBench
+pip install openai anthropic python-dotenv
+```
+
+Create a `.env` file with your API key:
+
+```bash
+OPENROUTER_API_KEY=your_key_here   # primary — access 20+ models including Claude, Llama, Gemma
+ANTHROPIC_API_KEY=your_key_here    # optional fallback for direct Anthropic API access
+```
+
+Get a free OpenRouter key at [openrouter.ai](https://openrouter.ai) — many models are free-tier with no credits needed.
+
+## 7. Quick Start
 
 ### Eval Suite (standardized one-click evaluation)
 
@@ -606,7 +640,7 @@ python3 eval.py --serve     # Dashboard: replay viewer, aggregate model analytic
 python3 eval.py --clear     # Reset all results and ratings
 ```
 
-## 7. Built-in Strategies
+## 8. Built-in Strategies
 
 BarterBench ships with three prompt strategies for the arena:
 
@@ -618,7 +652,7 @@ BarterBench ships with three prompt strategies for the arena:
 
 Anyone can submit a new strategy — no code required, just a prompt. Strategies compete via pairwise ELO, with an optional cross-model dimension (run each strategy on haiku, sonnet, and opus to see which strategy-model combinations dominate).
 
-## 8. Information Model
+## 9. Information Model
 
 Each agent operates under **strict information isolation**:
 
@@ -634,7 +668,7 @@ Agents never see each other's private state. Public information flows through th
 
 The gossip system means agents must decide on every turn: **broadcast to the market (maximize counterparties) or whisper to a specific trader (hide your strategy)**. This information asymmetry is a key dimension of agent intelligence — the best strategies balance transparency and secrecy based on market conditions.
 
-## 9. Architecture
+## 10. Architecture
 
 ```
 ├── eval.py           # CLI entry point, tournament orchestration, matrix mode
@@ -733,17 +767,32 @@ Each run records full reproducibility metadata including resolved model version 
 
 ### Backends
 
-Three LLM backends with automatic detection:
+Three LLM backends with automatic detection. OpenRouter is the default — it covers Claude models, open-weight models, and frontier models through one key:
 
-| Backend | Models | Auth |
-|---|---|---|
-| **Anthropic API** | haiku, sonnet, opus | `ANTHROPIC_API_KEY` env var |
-| **OpenRouter** | 15+ free models (hunter, llama-70b, gemma-27b, etc.) + paid (gpt4o, gemini-pro, deepseek) | `OPENROUTER_API_KEY` in `.env` |
-| **Claude CLI** | haiku, sonnet, opus | OAuth (no API key needed) |
-| **Random baseline** | random | No auth needed |
+| Backend | Models | Auth | Priority |
+|---|---|---|---|
+| **OpenRouter** | haiku, sonnet, opus + 20+ open/frontier models | `OPENROUTER_API_KEY` in `.env` | **1st** |
+| **Anthropic API** | haiku, sonnet, opus | `ANTHROPIC_API_KEY` env var | 2nd fallback |
+| **Claude CLI** | haiku, sonnet, opus | OAuth (no API key needed) | 3rd fallback |
+| **Random baseline** | random | No auth needed | Always |
+
+With `OPENROUTER_API_KEY` set, all models (including Claude) route through OpenRouter. The Anthropic API is only used as a fallback if no OpenRouter key is present.
 
 ### Adding New Models
 
 1. Add the model alias to `OPENROUTER_MODEL_MAP` in `agent.py`
 2. Add metadata to `MODEL_REGISTRY` in `model_registry.py`
 3. Run it: `python3 eval.py --benchmark --models newmodel,haiku --runs 3`
+
+## Citation
+
+If you use BarterBench in your research, please cite:
+
+```bibtex
+@misc{barterbench2026,
+  title   = {BarterBench: A Competitive Multi-Agent Marketplace Benchmark for Language Models},
+  author  = {Ball, James E.},
+  year    = {2026},
+  url     = {https://github.com/JamesEBall/BarterBench}
+}
+```

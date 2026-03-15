@@ -57,6 +57,13 @@ OPENROUTER_MODEL_MAP = {
     "deepseek":        "deepseek/deepseek-chat-v3-0324",
 }
 
+# Claude model paths when routing through OpenRouter (used when OPENROUTER_API_KEY is set)
+ANTHROPIC_VIA_OPENROUTER = {
+    "haiku":  "anthropic/claude-haiku-4-5-20251001",
+    "sonnet": "anthropic/claude-sonnet-4-6",
+    "opus":   "anthropic/claude-opus-4-6",
+}
+
 VALID_ACTIONS = {"post_offer", "accept_offer", "private_offer", "pass_turn",
                  "start_auction", "submit_bid", "close_auction"}
 
@@ -338,11 +345,13 @@ class MarketAgent:
         self.conversation_history = []  # stateful: accumulate turns within a match (API)
         self.round_history = []  # stateful: (round, action_summary) tuples (CLI)
 
-        # Determine backend: openrouter for OR models, api for Anthropic API, cli fallback
+        # Determine backend: OpenRouter first (covers all models), then Anthropic API, then CLI
         is_openrouter = model_name in OPENROUTER_MODEL_MAP or model_name.startswith("openrouter/") or "/" in model_name
         if backend == "auto":
             if is_openrouter:
                 self.backend = "openrouter"
+            elif os.environ.get("OPENROUTER_API_KEY"):
+                self.backend = "openrouter"  # route Claude models through OpenRouter
             elif os.environ.get("ANTHROPIC_API_KEY"):
                 self.backend = "api"
             else:
@@ -352,7 +361,7 @@ class MarketAgent:
 
         if self.backend == "openrouter":
             from openai import OpenAI
-            self.model = OPENROUTER_MODEL_MAP.get(model_name, model_name)
+            self.model = OPENROUTER_MODEL_MAP.get(model_name) or ANTHROPIC_VIA_OPENROUTER.get(model_name, model_name)
             self.client = OpenAI(
                 base_url="https://openrouter.ai/api/v1",
                 api_key=os.environ.get("OPENROUTER_API_KEY", ""),
