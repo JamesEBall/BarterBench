@@ -1006,7 +1006,7 @@ svg text { font-family: var(--mono); }
   <div class="analytics-sub">Scale vs Performance</div>
   <div class="card" style="margin-bottom:1rem">
     <div class="card-label">goal completion vs model size<span class="card-hint">bubble = parameter count (B)</span></div>
-    <svg id="chartScale" viewBox="0 0 460 260" preserveAspectRatio="xMidYMid meet" style="width:100%;display:block"></svg>
+    <svg id="chartScale" viewBox="0 0 460 200" preserveAspectRatio="xMidYMid meet" style="width:100%;max-height:240px;display:block"></svg>
   </div>
 
   <!-- Outcome -->
@@ -1163,9 +1163,9 @@ svg text { font-family: var(--mono); }
 // ============================================================
 // Model metadata (trimmed from model_registry.py)
 const MODEL_META = {
-  haiku:    { params: 3.5,  cost_in: 0.80,  provider: 'anthropic', family: 'claude' },
-  sonnet:   { params: 70,   cost_in: 3.00,  provider: 'anthropic', family: 'claude' },
-  opus:     { params: 176,  cost_in: 15.00, provider: 'anthropic', family: 'claude' },
+  haiku:    { params: 20,   cost_in: 0.80,  provider: 'anthropic', family: 'claude' },
+  sonnet:   { params: 175,  cost_in: 3.00,  provider: 'anthropic', family: 'claude' },
+  opus:     { params: 1500, cost_in: 15.00, provider: 'anthropic', family: 'claude' },
   hunter:   { params: 1000, cost_in: 0,     provider: 'openrouter', family: 'openrouter' },
   healer:   { params: null, cost_in: 0,     provider: 'openrouter', family: 'openrouter' },
   'llama-70b':   { params: 70,  cost_in: 0, provider: 'meta',    family: 'llama' },
@@ -1269,8 +1269,27 @@ function switchTab(name, btn) {
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('tab-' + name).classList.add('active');
   btn.classList.add('active');
-  // Re-render charts when switching to analytics (SVGs may have been hidden)
+  sessionStorage.setItem('bb_tab', name);
   if (name === 'analytics') renderAnalytics();
+  if (name === 'replay') {
+    // Canvas was hidden on init so had 0 dimensions — resize now that it's visible
+    if (!scene) {
+      initScene();
+      if (currentRun) scene.loadRun(currentRun);
+    } else {
+      scene._resizeCanvas();
+      scene._generateGround();
+      scene._buildStalls();
+      if (currentRun) scene.loadRun(currentRun);
+    }
+  }
+}
+
+function restoreTab() {
+  const saved = sessionStorage.getItem('bb_tab');
+  if (!saved || saved === 'overview') return;
+  const btn = document.querySelector(`.tab-btn[onclick*="'${saved}'"]`);
+  if (btn) switchTab(saved, btn);
 }
 
 // ============================================================
@@ -2972,12 +2991,13 @@ function renderScaleScatter() {
   svg.innerHTML = '';
 
   const data = filtered();
-  const gcAgg = aggregateByModel(data, (d, model, score) => score);
+  // Exclude models with 0% completion — these are failed/rate-limited runs, not real results
+  const gcAgg = aggregateByModel(data, (d, model, score) => score).filter(m => m.avg > 0.01);
   if (!gcAgg.length) { svg.innerHTML = '<text x="230" y="130" text-anchor="middle" fill="#9ca3af" font-size="11">no data yet</text>'; return; }
 
-  const W = 460, H = 260;
+  const W = 460, H = 200;
   svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
-  const p = { t: 20, r: 30, b: 36, l: 52 };
+  const p = { t: 16, r: 30, b: 32, l: 52 };
   const pw = W - p.l - p.r, ph = H - p.t - p.b;
 
   // Collect models with param data
@@ -3002,11 +3022,11 @@ function renderScaleScatter() {
   });
 
   // X axis tick labels at round param counts
-  [3.5, 10, 70, 176, 1000].filter(v => v <= maxParams * 2).forEach(v => {
+  [20, 70, 175, 1500].filter(v => v <= maxParams * 2).forEach(v => {
     const x = xPos(v);
     if (x < p.l || x > W - p.r) return;
     svg.innerHTML += `<line x1="${x}" y1="${p.t}" x2="${x}" y2="${H - p.b}" stroke="#f3f4f6" stroke-width="1"/>`;
-    const label = v >= 1000 ? `${v/1000}T` : `${v}B`;
+    const label = v >= 1000 ? `${(v/1000).toFixed(1)}T` : `${v}B`;
     svg.innerHTML += `<text x="${x}" y="${H - p.b + 13}" text-anchor="middle" fill="#6b7280" font-size="8">${label}</text>`;
   });
 
@@ -3753,8 +3773,7 @@ async function pollLiveMatch() {
 // ============================================================
 // INIT
 // ============================================================
-initScene();
-loadData();
+loadData().then(restoreTab);
 loadScenarios();
 setInterval(loadData, 5000);
 setInterval(pollExperiments, 3000);
