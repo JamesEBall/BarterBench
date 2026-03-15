@@ -38,15 +38,18 @@ In *The Wealth of Nations* (1776), Adam Smith hypothesized that money arose beca
 
 Existing multi-agent benchmarks for language models are either cooperative (everyone can succeed), limited to 2-agent dyads, or treat economic reasoning as incidental. None capture the core challenge of **competitive resource allocation under scarcity** — where one agent's gain is another's loss.
 
-| Benchmark | Agents | Competition | Scarcity | LLM-native |
+| Benchmark | Agents | Competition | Designed Scarcity | LLM-native |
 |---|---|---|---|---|
 | NegotiationArena (Bianchi et al., ICML 2024) | 2 | Yes | No | Yes |
-| Melting Pot (Agapiou et al., 2023) | N | Yes | Yes | No (RL) |
-| SOTOPIA (Zhou et al., 2024) | 2 | Partial | No | Yes |
+| GTBench (Duan et al., NeurIPS 2024) | 2 | Yes | No | Yes |
+| LLM-Deliberation (Abdelnabi et al., NeurIPS 2024) | N | Mixed | No | Yes |
+| MAgIC (Xu et al., EMNLP 2024) | N | Yes | No | Yes |
+| SOTOPIA (Zhou et al., ICLR 2024) | 2 | Partial | No | Yes |
+| Melting Pot (Agapiou et al., NeurIPS 2023) | N | Yes | Yes | No (RL) |
 | Chatbot Arena (Chiang et al., 2024) | 1 | Pairwise | N/A | Yes |
 | **BarterBench** | **N** | **Yes** | **Yes** | **Yes** |
 
-BarterBench is the first benchmark that combines N-agent interaction, designed scarcity, and competitive ELO-style evaluation for language model agents.
+BarterBench is the first benchmark combining N-agent interaction, designed resource scarcity, and ELO-style evaluation for LLM agents. Existing LLM-native benchmarks either use 2-agent dyads (NegotiationArena, GTBench, SOTOPIA) or omit economic scarcity (MAgIC, LLM-Deliberation). Melting Pot includes scarcity but uses RL agents, not language models.
 
 ### Key Findings
 
