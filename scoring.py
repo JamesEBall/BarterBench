@@ -106,6 +106,23 @@ def compute_metrics(result):
     if result.get("initial_inventories"):
         metrics["capability_scores"] = compute_capability_scores(result)
 
+    # Process metrics: barter capability decomposition
+    process_metrics = {}
+    ter = compute_trade_efficiency_ratio(result)
+    if ter:
+        process_metrics["trade_efficiency_ratio"] = ter
+    iss = compute_information_security_score(result)
+    if iss:
+        process_metrics["information_security_score"] = iss
+    oer = compute_offer_execution_rate(result)
+    if oer:
+        process_metrics["offer_execution_rate"] = oer
+    trr = compute_trade_relevance_rate(result)
+    if trr:
+        process_metrics["trade_relevance_rate"] = trr
+    if process_metrics:
+        metrics["process_metrics"] = process_metrics
+
     # Strategy-based scoring (arena mode)
     has_strategies = any(ar.get("strategy_id") for ar in agent_results)
     if has_strategies:
@@ -732,6 +749,330 @@ def compute_aggregate_statistics(entries, n_bootstrap=1000, seed=42):
         "per_model": per_model,
         "pairwise": pairwise,
         "total_runs": len(entries),
+    }
+
+
+# ============================================================
+# PROCESS METRICS — barter capability decomposition
+# ============================================================
+
+def _compute_fair_values(result):
+    """Compute per-item fair value from supply/demand ratios.
+
+    fair_value(item) = total_demand / total_supply.
+    Scarce items (demand > supply) have values > 1.0.
+    Items with no demand get 0.1 (nearly worthless, avoids div-by-zero).
+    """
+    initial_inventories = result.get("initial_inventories", [])
+    targets = result.get("targets", [])
+    if not initial_inventories:
+        return {}
+
+    total_supply = {}
+    for inv in initial_inventories:
+        for item, qty in inv.items():
+            total_supply[item] = total_supply.get(item, 0) + qty
+
+    total_demand = {}
+    for t in (targets or []):
+        for item, qty in t.items():
+            total_demand[item] = total_demand.get(item, 0) + qty
+
+    fair_values = {}
+    for item in set(total_supply) | set(total_demand):
+        supply = total_supply.get(item, 1)
+        demand = total_demand.get(item, 0)
+        if supply > 0 and demand > 0:
+            fair_values[item] = demand / supply
+        elif supply > 0:
+            fair_values[item] = 0.1  # no demand → nearly worthless
+        else:
+            fair_values[item] = 1.0  # fallback
+    return fair_values
+
+
+def compute_trade_efficiency_ratio(result):
+    """Measure trade quality relative to fair market value.
+
+    TER > 1.0: agent received more fair value than it gave (favorable deals).
+    TER = 1.0: broke even at fair value.
+    TER < 1.0: agent overpaid (gave more than it received).
+
+    Fair value derived from supply/demand ratios in the scenario.
+    """
+    trades = result.get("trades", [])
+    agent_results = result["agent_results"]
+    if not trades:
+        return None
+
+    fair_values = _compute_fair_values(result)
+    if not fair_values:
+        return None
+
+    agent_model = {ar["agent_idx"]: ar["model"] for ar in agent_results}
+    agent_received = {ar["agent_idx"]: 0.0 for ar in agent_results}
+    agent_given = {ar["agent_idx"]: 0.0 for ar in agent_results}
+
+    for trade in trades:
+        poster = trade["poster"]
+        accepter = trade["accepter"]
+        give = trade.get("give") or {}
+        want = trade.get("want") or {}
+        # Poster gives 'give', receives 'want'
+        for item, qty in give.items():
+            v = fair_values.get(item, 1.0) * int(qty)
+            agent_given[poster] = agent_given.get(poster, 0) + v
+            agent_received[accepter] = agent_received.get(accepter, 0) + v
+        # Accepter gives 'want', receives 'give'
+        for item, qty in want.items():
+            v = fair_values.get(item, 1.0) * int(qty)
+            agent_given[accepter] = agent_given.get(accepter, 0) + v
+            agent_received[poster] = agent_received.get(poster, 0) + v
+
+    agent_ter = {}
+    for ar in agent_results:
+        idx = ar["agent_idx"]
+        given = agent_given.get(idx, 0)
+        if given > 0:
+            agent_ter[idx] = round(agent_received.get(idx, 0) / given, 4)
+
+    model_received = {}
+    model_given = {}
+    for ar in agent_results:
+        idx = ar["agent_idx"]
+        model = agent_model.get(idx)
+        if model:
+            model_received[model] = model_received.get(model, 0) + agent_received.get(idx, 0)
+            model_given[model] = model_given.get(model, 0) + agent_given.get(idx, 0)
+
+    model_ter = {}
+    for model in model_received:
+        if model_given.get(model, 0) > 0:
+            model_ter[model] = round(model_received[model] / model_given[model], 4)
+
+    overall = round(sum(agent_ter.values()) / len(agent_ter), 4) if agent_ter else None
+    return {
+        "fair_values": {k: round(v, 4) for k, v in fair_values.items()},
+        "per_agent": {str(idx): ter for idx, ter in agent_ter.items()},
+        "per_model": model_ter,
+        "overall": overall,
+    }
+
+
+def compute_information_security_score(result):
+    """Measure how well agents protected their private target information.
+
+    Detects when agents mention target items in messages, revealing what
+    they need — strategic naivety in a competitive scarce market.
+
+    ISS = 1.0: never mentioned target items (perfect secrecy).
+    ISS = 0.0: revealed in round 0 (immediately).
+    ISS = reveal_round / max_round (later reveal = higher score).
+    """
+    history = result.get("history", [])
+    agent_results = result["agent_results"]
+    if not history:
+        return None
+
+    max_round = max(h["round"] for h in history)
+
+    agent_target_items = {}
+    for ar in agent_results:
+        target = ar.get("target") or {}
+        agent_target_items[ar["agent_idx"]] = {
+            item.lower() for item, qty in target.items() if qty > 0
+        }
+
+    agent_first_reveal = {}
+    for h in history:
+        if h.get("invalid"):
+            continue
+        agent = h["agent"]
+        message = h.get("message", "")
+        if not message:
+            continue
+        target_items = agent_target_items.get(agent, set())
+        if not target_items:
+            continue
+        msg_lower = message.lower()
+        for item in target_items:
+            if item in msg_lower:
+                rnd = h["round"]
+                if agent not in agent_first_reveal or rnd < agent_first_reveal[agent]:
+                    agent_first_reveal[agent] = rnd
+                break
+
+    agent_iss = {}
+    for ar in agent_results:
+        idx = ar["agent_idx"]
+        if idx not in agent_first_reveal:
+            agent_iss[idx] = 1.0
+        else:
+            agent_iss[idx] = round(agent_first_reveal[idx] / max(max_round, 1), 4)
+
+    agent_model = {ar["agent_idx"]: ar["model"] for ar in agent_results}
+    model_sum = {}
+    model_cnt = {}
+    for idx, iss in agent_iss.items():
+        model = agent_model.get(idx)
+        if model:
+            model_sum[model] = model_sum.get(model, 0) + iss
+            model_cnt[model] = model_cnt.get(model, 0) + 1
+    model_iss = {m: round(model_sum[m] / model_cnt[m], 4) for m in model_sum}
+
+    overall = round(sum(agent_iss.values()) / len(agent_iss), 4) if agent_iss else 1.0
+    return {
+        "per_agent": {str(idx): iss for idx, iss in agent_iss.items()},
+        "per_model": model_iss,
+        "overall": overall,
+        "revelation_count": len(agent_first_reveal),
+        "never_revealed_count": len(agent_iss) - len(agent_first_reveal),
+    }
+
+
+def compute_offer_execution_rate(result):
+    """Measure how well agents priced and targeted their offers.
+
+    OER = offers_accepted_by_others / offers_posted
+    High OER: offers were priced attractively and filled quickly.
+    Low OER: many offers sat unaccepted (poor pricing or wrong items).
+    """
+    history = result.get("history", [])
+    trades = result.get("trades", [])
+    agent_results = result["agent_results"]
+    if not history:
+        return None
+
+    agent_posted = {ar["agent_idx"]: 0 for ar in agent_results}
+    for h in history:
+        if h["action"] in ("post_offer", "private_offer") and not h.get("invalid"):
+            idx = h["agent"]
+            if idx in agent_posted:
+                agent_posted[idx] += 1
+
+    agent_accepted = {ar["agent_idx"]: 0 for ar in agent_results}
+    for t in (trades or []):
+        poster = t["poster"]
+        if poster in agent_accepted:
+            agent_accepted[poster] += 1
+
+    agent_oer = {}
+    for ar in agent_results:
+        idx = ar["agent_idx"]
+        posted = agent_posted.get(idx, 0)
+        if posted > 0:
+            agent_oer[idx] = round(agent_accepted.get(idx, 0) / posted, 4)
+
+    agent_model = {ar["agent_idx"]: ar["model"] for ar in agent_results}
+    model_posted = {}
+    model_accepted = {}
+    for ar in agent_results:
+        idx = ar["agent_idx"]
+        model = agent_model.get(idx)
+        if model:
+            model_posted[model] = model_posted.get(model, 0) + agent_posted.get(idx, 0)
+            model_accepted[model] = model_accepted.get(model, 0) + agent_accepted.get(idx, 0)
+
+    model_oer = {}
+    for model in model_posted:
+        if model_posted.get(model, 0) > 0:
+            model_oer[model] = round(model_accepted.get(model, 0) / model_posted[model], 4)
+
+    valid_oers = list(agent_oer.values())
+    overall = round(sum(valid_oers) / len(valid_oers), 4) if valid_oers else None
+    return {
+        "per_agent": {str(idx): oer for idx, oer in agent_oer.items()},
+        "per_model": model_oer,
+        "overall": overall,
+    }
+
+
+def compute_trade_relevance_rate(result):
+    """Measure whether trades moved agents toward their goals.
+
+    TRR = goal_advancing_trades / total_trades_participated_in
+    A trade is "relevant" if items received include at least one item
+    the agent still needed more of at the time of the trade.
+
+    High TRR: consistently made on-goal trades.
+    Low TRR: many off-goal or counterproductive trades.
+    """
+    trades = result.get("trades", [])
+    agent_results = result["agent_results"]
+    initial_inventories = result.get("initial_inventories", [])
+    if not trades or not initial_inventories:
+        return None
+
+    agent_targets = {ar["agent_idx"]: ar.get("target") or {} for ar in agent_results}
+    agent_model = {ar["agent_idx"]: ar["model"] for ar in agent_results}
+
+    inventories = [dict(inv) for inv in initial_inventories]
+
+    agent_relevant = {ar["agent_idx"]: 0 for ar in agent_results}
+    agent_total = {ar["agent_idx"]: 0 for ar in agent_results}
+
+    def is_relevant(idx, items_received):
+        if idx >= len(inventories):
+            return False
+        target = agent_targets.get(idx, {})
+        inv = inventories[idx]
+        for item, qty in (items_received or {}).items():
+            if target.get(item, 0) > 0 and inv.get(item, 0) < target[item]:
+                return True
+        return False
+
+    for trade in sorted(trades, key=lambda t: t.get("round", 0)):
+        poster = trade["poster"]
+        accepter = trade["accepter"]
+        give = trade.get("give") or {}
+        want = trade.get("want") or {}
+
+        if poster in agent_total:
+            agent_total[poster] += 1
+            if is_relevant(poster, want):
+                agent_relevant[poster] += 1
+
+        if accepter in agent_total:
+            agent_total[accepter] += 1
+            if is_relevant(accepter, give):
+                agent_relevant[accepter] += 1
+
+        if poster < len(inventories):
+            for item, qty in give.items():
+                inventories[poster][item] = inventories[poster].get(item, 0) - int(qty)
+            for item, qty in want.items():
+                inventories[poster][item] = inventories[poster].get(item, 0) + int(qty)
+        if accepter < len(inventories):
+            for item, qty in want.items():
+                inventories[accepter][item] = inventories[accepter].get(item, 0) - int(qty)
+            for item, qty in give.items():
+                inventories[accepter][item] = inventories[accepter].get(item, 0) + int(qty)
+
+    agent_trr = {}
+    for ar in agent_results:
+        idx = ar["agent_idx"]
+        total = agent_total.get(idx, 0)
+        if total > 0:
+            agent_trr[idx] = round(agent_relevant.get(idx, 0) / total, 4)
+
+    model_rel = {}
+    model_tot = {}
+    for idx in agent_relevant:
+        model = agent_model.get(idx)
+        if model:
+            model_rel[model] = model_rel.get(model, 0) + agent_relevant[idx]
+            model_tot[model] = model_tot.get(model, 0) + agent_total.get(idx, 0)
+
+    model_trr = {}
+    for model in model_rel:
+        if model_tot.get(model, 0) > 0:
+            model_trr[model] = round(model_rel[model] / model_tot[model], 4)
+
+    overall = round(sum(agent_trr.values()) / len(agent_trr), 4) if agent_trr else None
+    return {
+        "per_agent": {str(idx): trr for idx, trr in agent_trr.items()},
+        "per_model": model_trr,
+        "overall": overall,
     }
 
 

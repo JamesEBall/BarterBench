@@ -355,6 +355,37 @@ tr:hover td { background: var(--surface2); }
 .filter-btn.active { background: var(--accent); color: #ffffff; border-color: var(--accent); }
 svg text { font-family: var(--mono); }
 
+/* ---- Analytics sub-section dividers ---- */
+.analytics-sub {
+  font-family: var(--mono);
+  font-size: 0.6rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text3);
+  margin: 1.75rem 0 0.75rem;
+  padding-bottom: 0.45rem;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+}
+.analytics-sub-note {
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 0.6rem;
+  color: var(--text3);
+}
+.card-hint {
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 0.6rem;
+  color: var(--text3);
+  margin-left: 0.3rem;
+}
+
 /* ---- Launcher Bar ---- */
 .launcher-bar {
   background: var(--surface);
@@ -950,42 +981,69 @@ svg text { font-family: var(--mono); }
 
 <div class="summary-bar" id="summary"></div>
 
-<!-- ==================== ANALYTICS CHARTS ==================== -->
+<!-- ==================== ANALYTICS ==================== -->
 <div style="margin-top:2.5rem;border-top:1px solid var(--border);padding-top:2rem">
   <h2 style="font-size:1rem;font-weight:600;margin:0 0 0.75rem;letter-spacing:-0.02em;color:var(--text)">Aggregate Analytics</h2>
-  <div class="filters" id="scenarioFilters" style="display:flex;gap:0.35rem;margin-bottom:1rem;flex-wrap:wrap"></div>
+  <div class="filters" id="scenarioFilters" style="display:flex;gap:0.35rem;margin-bottom:1.25rem;flex-wrap:wrap"></div>
 
-  <div class="card" style="margin-bottom:1rem">
+  <!-- Leaderboard -->
+  <div class="card" style="margin-bottom:0">
     <div class="card-label">leaderboard</div>
     <table id="leaderboard"></table>
   </div>
 
+  <!-- Outcome -->
+  <div class="analytics-sub">Outcome</div>
   <div class="content-grid">
     <div class="card">
-      <div class="card-label">avg goal completion by model</div>
-      <svg id="chartGoal" viewBox="0 0 460 260" preserveAspectRatio="xMidYMid meet" style="width:100%;display:block"></svg>
+      <div class="card-label">avg goal completion</div>
+      <svg id="chartGoal" viewBox="0 0 460 240" preserveAspectRatio="xMidYMid meet" style="width:100%;display:block"></svg>
     </div>
     <div class="card">
       <div class="card-label">elo rating</div>
-      <svg id="chartElo" viewBox="0 0 460 260" preserveAspectRatio="xMidYMid meet" style="width:100%;display:block"></svg>
+      <svg id="chartElo" viewBox="0 0 460 240" preserveAspectRatio="xMidYMid meet" style="width:100%;display:block"></svg>
     </div>
   </div>
 
+  <!-- Process Metrics -->
+  <div class="analytics-sub">Process Metrics <span class="analytics-sub-note">barter capability decomposition</span></div>
   <div class="content-grid">
     <div class="card">
-      <div class="card-label">avg trades by model</div>
+      <div class="card-label">trade efficiency ratio (TER)<span class="card-hint">fair value received ÷ given — 1.0 = fair</span></div>
+      <svg id="chartTER" viewBox="0 0 460 220" preserveAspectRatio="xMidYMid meet" style="width:100%;display:block"></svg>
+    </div>
+    <div class="card">
+      <div class="card-label">offer execution rate (OER)<span class="card-hint">posted offers accepted by others</span></div>
+      <svg id="chartOER" viewBox="0 0 460 220" preserveAspectRatio="xMidYMid meet" style="width:100%;display:block"></svg>
+    </div>
+  </div>
+  <div class="content-grid">
+    <div class="card">
+      <div class="card-label">trade relevance rate (TRR)<span class="card-hint">trades that advanced own goal</span></div>
+      <svg id="chartTRR" viewBox="0 0 460 220" preserveAspectRatio="xMidYMid meet" style="width:100%;display:block"></svg>
+    </div>
+    <div class="card">
+      <div class="card-label">information security score (ISS)<span class="card-hint">target item secrecy — 1.0 = never revealed</span></div>
+      <svg id="chartISS" viewBox="0 0 460 220" preserveAspectRatio="xMidYMid meet" style="width:100%;display:block"></svg>
+    </div>
+  </div>
+
+  <!-- Activity -->
+  <div class="analytics-sub">Activity</div>
+  <div class="content-grid">
+    <div class="card">
+      <div class="card-label">avg trades per run</div>
       <svg id="chartTrades" viewBox="0 0 460 200" preserveAspectRatio="xMidYMid meet" style="width:100%;display:block"></svg>
     </div>
     <div class="card">
-      <div class="card-label">avg invalid rate by model</div>
-      <svg id="chartInvalid" viewBox="0 0 460 200" preserveAspectRatio="xMidYMid meet" style="width:100%;display:block"></svg>
+      <div class="card-label">avg pareto efficiency</div>
+      <svg id="chartPareto" viewBox="0 0 460 200" preserveAspectRatio="xMidYMid meet" style="width:100%;display:block"></svg>
     </div>
   </div>
-
   <div class="content-grid">
     <div class="card">
-      <div class="card-label">avg pareto efficiency by model</div>
-      <svg id="chartPareto" viewBox="0 0 460 200" preserveAspectRatio="xMidYMid meet" style="width:100%;display:block"></svg>
+      <div class="card-label">avg invalid action rate</div>
+      <svg id="chartInvalid" viewBox="0 0 460 200" preserveAspectRatio="xMidYMid meet" style="width:100%;display:block"></svg>
     </div>
     <div class="card">
       <div class="card-label">head-to-head win rate</div>
@@ -993,8 +1051,9 @@ svg text { font-family: var(--mono); }
     </div>
   </div>
 
-  <div class="card">
-    <div class="card-label">run history</div>
+  <!-- History -->
+  <div class="analytics-sub">Run History</div>
+  <div class="card" style="margin-bottom:0">
     <table id="history"></table>
   </div>
 </div>
@@ -1005,7 +1064,59 @@ svg text { font-family: var(--mono); }
 // ============================================================
 // CONSTANTS
 // ============================================================
-const COLORS = { haiku: '#2563eb', sonnet: '#059669', opus: '#7c3aed' };
+// Curated muted palette — evenly spaced around the hue wheel at ~700-weight saturation/lightness.
+// Covers 12 slots so any model gets a distinct, on-system colour automatically.
+const PALETTE = [
+  '#2563eb',  // blue-600    h≈217
+  '#059669',  // emerald-600 h≈152
+  '#7c3aed',  // violet-600  h≈263
+  '#b45309',  // amber-700   h≈35
+  '#be185d',  // pink-700    h≈330
+  '#0e7490',  // cyan-700    h≈194
+  '#b91c1c',  // red-700     h≈0
+  '#4d7c0f',  // lime-700    h≈83
+  '#0369a1',  // sky-700     h≈202
+  '#7e22ce',  // purple-700  h≈271
+  '#0f766e',  // teal-700    h≈174
+  '#c2410c',  // orange-700  h≈22
+];
+// Named overrides — always neutral, never get a palette slot
+const NAMED_COLORS = {
+  random: '#9ca3af',  // gray-400
+};
+// Known models get stable preferred palette slots regardless of data order
+const PRESET_IDX = { haiku: 0, sonnet: 1, opus: 2, hunter: 3, healer: 4 };
+const _modelColorIdx = {};
+
+function seedModelColors(data) {
+  // Assign known models to fixed slots first
+  Object.entries(PRESET_IDX).forEach(([m, i]) => { _modelColorIdx[m] = i; });
+  // Collect unknown models from all entries, assign remaining slots alphabetically
+  const unknown = new Set();
+  data.forEach(d => {
+    const mgc = d.model_goal_completion || {};
+    Object.keys(mgc).forEach(m => {
+      const base = m.includes(':') ? m.split(':').pop() : m;
+      if (PRESET_IDX[base] === undefined && !NAMED_COLORS[base]) unknown.add(base);
+    });
+  });
+  let nextIdx = Object.keys(PRESET_IDX).length;
+  [...unknown].sort().forEach(m => {
+    if (_modelColorIdx[m] === undefined) _modelColorIdx[m] = nextIdx++ % PALETTE.length;
+  });
+}
+
+function gc(m) {
+  if (NAMED_COLORS[m]) return NAMED_COLORS[m];
+  const base = m.includes(':') ? m.split(':').pop() : m;
+  const key = base || m;
+  if (NAMED_COLORS[key]) return NAMED_COLORS[key];
+  if (_modelColorIdx[key] !== undefined) return PALETTE[_modelColorIdx[key]];
+  // Fallback: hash to palette slot for models not yet seeded
+  let h = 0;
+  for (let i = 0; i < key.length; i++) h = key.charCodeAt(i) + ((h << 5) - h);
+  return PALETTE[Math.abs(h) % PALETTE.length];
+}
 const ITEM_EMOJI = {
   apples:'\u{1F34E}',oranges:'\u{1F34A}',bananas:'\u{1F34C}',
   gold:'\u{1FA99}',silver:'\u{1F948}',copper:'\u{1F7E4}',
@@ -1023,14 +1134,6 @@ const AGENT_EMOJI = [
 // Medieval character labels for the canvas
 const MEDIEVAL_ROLES = ['Merchant','Trader','Smith','Baker','Farmer','Weaver','Jeweller','Alchemist','Scribe','Herald'];
 
-function gc(m) {
-  for (const [model, color] of Object.entries(COLORS)) {
-    if (m === model || m.endsWith(':' + model) || m.includes(':' + model)) return color;
-  }
-  let h = 0;
-  for (let i = 0; i < m.length; i++) h = m.charCodeAt(i) + ((h << 5) - h);
-  return `hsl(${Math.abs(h) % 360}, 55%, 45%)`;
-}
 function getGoalCompletion(d) {
   return d.strategy_goal_completion || d.model_goal_completion || {};
 }
@@ -1807,6 +1910,7 @@ async function loadData() {
   try { const r = await fetch('arena/results.json'); arenaData = (await r.json()).filter(d => !d.error); } catch {}
   try { const r = await fetch('benchmark_results.json'); benchmarkData = (await r.json()).filter(d => !d.error); benchmarkData.forEach(d => d._benchmark = true); } catch {}
   allData = [...pairwiseData, ...arenaData, ...benchmarkData];
+  seedModelColors(allData);
 
   eloRatings = {};
   try { const r = await fetch('elo_ratings.json'); Object.assign(eloRatings, await r.json()); } catch {}
@@ -2462,7 +2566,67 @@ function renderAnalytics() {
   renderInvalidChart();
   renderParetoChart();
   renderH2HTable();
+  renderProcessMetrics();
   renderHistory();
+}
+
+// ============================================================
+// PROCESS METRICS CHARTS
+// ============================================================
+function aggregateProcessMetric(data, metricKey) {
+  const sums = {}, counts = {};
+  data.forEach(d => {
+    const pm = d.process_metrics;
+    if (!pm || !pm[metricKey]) return;
+    const per_model = pm[metricKey].per_model || {};
+    Object.entries(per_model).forEach(([model, val]) => {
+      if (val == null) return;
+      sums[model] = (sums[model] || 0) + val;
+      counts[model] = (counts[model] || 0) + 1;
+    });
+  });
+  return Object.entries(sums)
+    .map(([model, sum]) => ({ model, avg: sum / counts[model], count: counts[model] }))
+    .sort((a, b) => b.avg - a.avg);
+}
+
+function renderProcessMetrics() {
+  const data = filtered();
+
+  // TER — diverging bar centred on 1.0 (fair value)
+  const terModels = aggregateProcessMetric(data, 'trade_efficiency_ratio');
+  if (terModels.length) {
+    renderDivergingBarChart('chartTER', terModels, 1.0,
+      v => v.toFixed(2),
+      m => `${m.model}: TER ${m.avg.toFixed(3)} (${m.count} runs) — ${m.avg > 1 ? 'favorable deals' : 'unfavorable deals'}`
+    );
+  }
+
+  // OER — offer acceptance rate
+  const oerModels = aggregateProcessMetric(data, 'offer_execution_rate');
+  if (oerModels.length) {
+    const oerMax = Math.min(Math.max(...oerModels.map(m => m.avg), 0.1) * 1.15, 1.0);
+    renderHorizontalBarChart('chartOER', oerModels, oerMax,
+      v => (v * 100).toFixed(0) + '%',
+      m => `${m.model}: OER ${(m.avg * 100).toFixed(1)}% (${m.count} runs) — offers accepted ÷ posted`
+    );
+  }
+
+  // TRR — trade relevance
+  const trrModels = aggregateProcessMetric(data, 'trade_relevance_rate');
+  if (trrModels.length) {
+    const trrMax = Math.min(Math.max(...trrModels.map(m => m.avg), 0.5) * 1.1, 1.0);
+    renderHorizontalBarChart('chartTRR', trrModels, trrMax,
+      v => (v * 100).toFixed(0) + '%',
+      m => `${m.model}: TRR ${(m.avg * 100).toFixed(1)}% (${m.count} runs) — goal-advancing trades`
+    );
+  }
+
+  // ISS — dot plot showing reveal position vs random baseline
+  const issModels = aggregateProcessMetric(data, 'information_security_score');
+  if (issModels.length) {
+    renderISSChart('chartISS', issModels);
+  }
 }
 
 function renderFilters() {
@@ -2499,9 +2663,9 @@ function renderHorizontalBarChart(svgId, models, maxVal, formatLabel, formatTool
   svg.innerHTML = '';
   if (!models.length) { svg.innerHTML = '<text x="230" y="100" text-anchor="middle" fill="#9ca3af" font-size="11">no data yet</text>'; return; }
 
-  const W = 460, H = Math.max(models.length * 36 + 40, 80);
+  const W = 460, H = Math.max(models.length * 36 + 52, 80);
   svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
-  const p = { t: 8, r: 20, b: 8, l: 80 };
+  const p = { t: 8, r: 20, b: 20, l: 80 };
   const pw = W - p.l - p.r, ph = H - p.t - p.b;
   const barH = Math.min(24, ph / models.length - 4);
 
@@ -2520,6 +2684,92 @@ function renderHorizontalBarChart(svgId, models, maxVal, formatLabel, formatTool
     svg.innerHTML += `<text x="${p.l - 6}" y="${y + barH / 2 + 3}" text-anchor="end" fill="#6b7280" font-size="9">${m.model}</text>`;
     svg.innerHTML += `<rect x="${p.l}" y="${y}" width="${Math.max(barW, 1)}" height="${barH}" rx="3" fill="${color}" opacity="0.8"><title>${formatTooltip(m)}</title></rect>`;
     svg.innerHTML += `<text x="${p.l + barW + 4}" y="${y + barH / 2 + 3}" fill="#374151" font-size="9" font-weight="500">${formatLabel(m.avg)}</text>`;
+  });
+}
+
+// Diverging bar chart centred on midVal (e.g. TER centred on 1.0).
+// Bars extend right (above midVal) or left (below midVal).
+function renderDivergingBarChart(svgId, models, midVal, formatLabel, formatTooltip) {
+  const svg = document.getElementById(svgId);
+  if (!svg) return;
+  svg.innerHTML = '';
+  if (!models.length) { svg.innerHTML = '<text x="230" y="100" text-anchor="middle" fill="#9ca3af" font-size="11">no data yet</text>'; return; }
+
+  const W = 460, H = Math.max(models.length * 36 + 60, 80);
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  const p = { t: 18, r: 20, b: 20, l: 80 };
+  const pw = W - p.l - p.r, ph = H - p.t - p.b;
+  const barH = Math.min(24, ph / models.length - 4);
+  const cx = p.l + pw / 2;
+  const maxDev = Math.max(...models.map(m => Math.abs(m.avg - midVal)), 0.2) * 1.2;
+  const half = pw / 2;
+
+  // Symmetric grid ticks
+  for (let i = 0; i <= 4; i++) {
+    const v = midVal - maxDev + (i / 4) * 2 * maxDev;
+    const x = cx + (v - midVal) / maxDev * half;
+    svg.innerHTML += `<line x1="${x}" y1="${p.t}" x2="${x}" y2="${H - p.b}" stroke="#e5e7eb" stroke-width="1"/>`;
+    svg.innerHTML += `<text x="${x}" y="${H - p.b + 12}" text-anchor="middle" fill="#9ca3af" font-size="8">${formatLabel(v)}</text>`;
+  }
+  // Centre line
+  svg.innerHTML += `<line x1="${cx}" y1="${p.t}" x2="${cx}" y2="${H - p.b}" stroke="#9ca3af" stroke-width="1" stroke-dasharray="4,3"/>`;
+  svg.innerHTML += `<text x="${cx}" y="${p.t - 4}" text-anchor="middle" fill="#9ca3af" font-size="7.5">fair (1.0)</text>`;
+
+  models.forEach((m, i) => {
+    const y = p.t + (i / models.length) * ph + (ph / models.length - barH) / 2;
+    const barEnd = cx + (m.avg - midVal) / maxDev * half;
+    const barX = Math.min(cx, barEnd);
+    const barW = Math.max(Math.abs(barEnd - cx), 2);
+    const color = gc(m.model);
+    const opacity = m.avg >= midVal ? 0.85 : 0.5;
+    svg.innerHTML += `<text x="${p.l - 6}" y="${y + barH / 2 + 3}" text-anchor="end" fill="#6b7280" font-size="9">${m.model}</text>`;
+    svg.innerHTML += `<rect x="${barX}" y="${y}" width="${barW}" height="${barH}" rx="3" fill="${color}" opacity="${opacity}"><title>${formatTooltip(m)}</title></rect>`;
+    if (m.avg >= midVal) {
+      svg.innerHTML += `<text x="${barEnd + 4}" y="${y + barH / 2 + 3}" fill="#374151" font-size="9" font-weight="500">${formatLabel(m.avg)}</text>`;
+    } else {
+      svg.innerHTML += `<text x="${barEnd - 4}" y="${y + barH / 2 + 3}" text-anchor="end" fill="#374151" font-size="9" font-weight="500">${formatLabel(m.avg)}</text>`;
+    }
+  });
+}
+
+// ISS dot-plot: each model is a dot on a 0–100% axis.
+// A dashed "random baseline" at 1/7 ≈ 14% shows the expected ISS for a uniformly random revealer.
+function renderISSChart(svgId, models) {
+  const svg = document.getElementById(svgId);
+  if (!svg) return;
+  svg.innerHTML = '';
+  if (!models.length) { svg.innerHTML = '<text x="230" y="100" text-anchor="middle" fill="#9ca3af" font-size="11">no data yet</text>'; return; }
+
+  const RANDOM_BASELINE = 1 / 7; // ≈ 14.3%
+  const sorted = [...models].sort((a, b) => a.avg - b.avg);
+  const W = 460, H = Math.max(sorted.length * 36 + 60, 80);
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  const p = { t: 22, r: 20, b: 20, l: 80 };
+  const pw = W - p.l - p.r, ph = H - p.t - p.b;
+  const rowH = ph / sorted.length;
+
+  // Axis ticks
+  for (let i = 0; i <= 4; i++) {
+    const v = i / 4;
+    const x = p.l + v * pw;
+    svg.innerHTML += `<line x1="${x}" y1="${p.t}" x2="${x}" y2="${H - p.b}" stroke="#e5e7eb" stroke-width="1"/>`;
+    svg.innerHTML += `<text x="${x}" y="${H - p.b + 12}" text-anchor="middle" fill="#9ca3af" font-size="8">${(v * 100).toFixed(0)}%</text>`;
+  }
+  // Random baseline
+  const bx = Math.round(p.l + RANDOM_BASELINE * pw);
+  svg.innerHTML += `<line x1="${bx}" y1="${p.t}" x2="${bx}" y2="${H - p.b}" stroke="#9ca3af" stroke-width="1" stroke-dasharray="4,3" opacity="0.9"/>`;
+  svg.innerHTML += `<text x="${bx + 3}" y="${p.t - 5}" fill="#9ca3af" font-size="7.5">random (14%)</text>`;
+  // Axis label
+  svg.innerHTML += `<text x="${p.l}" y="${p.t - 5}" text-anchor="start" fill="#9ca3af" font-size="7">← reveals immediately</text>`;
+
+  sorted.forEach((m, i) => {
+    const cy = p.t + (i + 0.5) * rowH;
+    const dx = p.l + m.avg * pw;
+    const color = gc(m.model);
+    svg.innerHTML += `<line x1="${p.l}" y1="${cy}" x2="${dx}" y2="${cy}" stroke="${color}" stroke-width="1" opacity="0.2"/>`;
+    svg.innerHTML += `<text x="${p.l - 6}" y="${cy + 3}" text-anchor="end" fill="#6b7280" font-size="9">${m.model}</text>`;
+    svg.innerHTML += `<circle cx="${dx}" cy="${cy}" r="5" fill="${color}" opacity="0.85"><title>${m.model}: ISS ${(m.avg * 100).toFixed(1)}% — ${m.avg < 0.02 ? 'reveals target immediately (round 0)' : 'reveals near start'}</title></circle>`;
+    svg.innerHTML += `<text x="${dx + 9}" y="${cy + 3}" fill="#374151" font-size="9" font-weight="500">${(m.avg * 100).toFixed(1)}%</text>`;
   });
 }
 
@@ -2543,9 +2793,9 @@ function renderEloChart() {
     .sort((a, b) => b.avg - a.avg);
 
   // ELO chart: bars relative to min, showing meaningful differences
-  const W = 460, H = Math.max(models.length * 36 + 40, 80);
+  const W = 460, H = Math.max(models.length * 36 + 52, 80);
   svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
-  const p = { t: 8, r: 20, b: 8, l: 80 };
+  const p = { t: 8, r: 20, b: 20, l: 80 };
   const pw = W - p.l - p.r, ph = H - p.t - p.b;
   const barH = Math.min(24, ph / models.length - 4);
 
