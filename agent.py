@@ -68,14 +68,14 @@ VALID_ACTIONS = {"post_offer", "accept_offer", "private_offer", "pass_turn",
                  "start_auction", "submit_bid", "close_auction"}
 
 JSON_SCHEMA_INSTRUCTION = """
-Think briefly, then output a JSON action:
+Reason briefly about your best move — what do you need, who has it, what leverage do you hold, how many rounds remain — then output exactly one JSON action.
 
-{"action": "post_offer", "give": {"item": qty}, "want": {"item": qty}, "message": "reason"}
+{"action": "post_offer",    "give": {"item": qty}, "want": {"item": qty}, "message": "reason"}
 {"action": "private_offer", "give": {"item": qty}, "want": {"item": qty}, "target_agent": 3, "message": "reason"}
-{"action": "accept_offer", "offer_id": 123, "message": "reason"}
-{"action": "pass_turn", "message": "reason"}
+{"action": "accept_offer",  "offer_id": 123, "message": "reason"}
+{"action": "pass_turn",     "message": "reason"}
 {"action": "start_auction", "give": {"item": qty}, "min_bid": {"item": qty}, "visible_to": [1, 3], "message": "reason"}
-{"action": "submit_bid", "auction_id": 1, "bid": {"item": qty}, "message": "reason"}
+{"action": "submit_bid",    "auction_id": 1, "bid": {"item": qty}, "message": "reason"}
 {"action": "close_auction", "auction_id": 1, "accepted_bid_idx": 0, "message": "reason"}
 """.strip()
 
@@ -179,26 +179,56 @@ AUCTION_TOOLS = [
 
 def _build_marketplace_context(agent_idx, inventory, target, order_book, recent_trades, round_num, max_rounds, strategy_prompt=None, auctions=None):
     """Build the system prompt for a marketplace agent."""
+    rounds_remaining = max_rounds - round_num
+    urgency = "CRITICAL — final rounds, accept imperfect deals now" if rounds_remaining <= 2 else \
+              "HIGH — limited time, prioritise execution" if rounds_remaining <= max_rounds // 3 else \
+              "NORMAL"
+
     # Goal completion so far
+    still_need = {}
     completion_parts = []
     for item, needed in target.items():
         if needed > 0:
             have = inventory.get(item, 0)
             pct = min(have / needed, 1.0) * 100
             completion_parts.append(f"{item}: {have}/{needed} ({pct:.0f}%)")
+            if have < needed:
+                still_need[item] = needed - have
+
+    # Items you hold that aren't in your target (potential trade chips)
+    surplus = {item: qty for item, qty in inventory.items()
+               if qty > 0 and item not in target}
+    # Items you hold beyond your target (also surplus)
+    for item, qty in inventory.items():
+        extra = qty - target.get(item, 0)
+        if extra > 0 and item not in surplus:
+            surplus[item] = extra
+
+    # Infer which items opponents are seeking from the order book
+    wanted_by_others = {}
+    for offer in order_book:
+        if offer["poster"] != agent_idx:
+            for item, qty in offer.get("want", {}).items():
+                wanted_by_others[item] = wanted_by_others.get(item, 0) + qty
+
+    leverage = {item: qty for item, qty in surplus.items() if item in wanted_by_others}
 
     lines = [
         f"You are Trader {agent_idx} in a competitive multi-agent marketplace.",
-        f"Round {round_num + 1} of {max_rounds}.",
+        f"Round {round_num + 1} of {max_rounds} | {rounds_remaining} rounds remaining | Urgency: {urgency}",
         "",
-        "## Your Goal",
-        "Acquire items to match your TARGET inventory through trading.",
-        "Some items are SCARCE (demand exceeds supply across all traders), so not everyone can fully reach their goal.",
-        "",
-        f"Your current inventory: {json.dumps(inventory)}",
-        f"Your target inventory:  {json.dumps(target)}",
-        f"Goal progress: {', '.join(completion_parts) if completion_parts else 'No targets'}",
+        "## Your Position",
+        f"Inventory: {json.dumps(inventory)}",
+        f"Target:    {json.dumps(target)}",
+        f"Progress:  {', '.join(completion_parts) if completion_parts else 'No targets set'}",
     ]
+
+    if still_need:
+        lines.append(f"Still need: {json.dumps(still_need)}")
+    if leverage:
+        lines.append(f"You hold {json.dumps(leverage)} — others are actively seeking these (leverage)")
+    elif surplus:
+        lines.append(f"Trade chips (surplus items): {json.dumps(surplus)}")
 
     if strategy_prompt:
         lines.append("")
@@ -207,14 +237,13 @@ def _build_marketplace_context(agent_idx, inventory, target, order_book, recent_
 
     lines.extend([
         "",
-        "## Rules",
-        "1. You can POST a public offer (visible to all traders on the order book)",
-        "2. You can send a PRIVATE OFFER (whisper) to a specific trader — only they can see it",
-        "3. You can ACCEPT an existing offer from the order book (public or private)",
-        "4. You can PASS if no good trades are available",
-        "5. Trades execute immediately when accepted — both inventories update",
-        "6. You can only offer items you currently have (quantity > 0)",
-        "7. You cannot accept your own offers",
+        "## Actions",
+        "post_offer     — public offer visible to all (reveals your position, maximises counterparties)",
+        "private_offer  — whisper to one trader only (hides your strategy, use for key deals)",
+        "accept_offer   — execute an offer immediately (yours or another's)",
+        "pass_turn      — skip this round (costs you a trading opportunity)",
+        "",
+        "Rules: you can only offer items you hold | you cannot accept your own offers | trades are atomic",
     ])
 
     if order_book:

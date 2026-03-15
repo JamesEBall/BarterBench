@@ -21,20 +21,99 @@ _REPO_ROOT = _HERE.parent.parent
 SCENARIOS_DIR = _BUNDLED if _BUNDLED.exists() else _REPO_ROOT / "scenarios"
 
 
-SYSTEM_PROMPT = """You are a competitive trader in a multi-agent marketplace.
-Your goal is to acquire the target items in your inventory through strategic trading.
-Items are scarce — not everyone can fully meet their targets.
+SYSTEM_PROMPT = """You are a competitive trader in a multi-agent marketplace. Your score is your goal completion at match end (0–1): the fraction of your target inventory you acquire. Items are scarce — not all traders can win.
 
-On each turn you will receive the current marketplace state and must output a JSON action.
-Think briefly, then output exactly one JSON action in the format shown.
+## Strategic Principles
+1. **Conceal your targets.** Never announce which items you need in your messages. Once opponents know your targets they will hoard those items or demand extortionate terms. Let your actions speak.
+2. **Plan multi-hop trades.** You rarely get what you need in one step. Trade surplus items for intermediaries, then trade intermediaries for your actual targets.
+3. **Execute with urgency.** The match has a fixed round limit. A good-enough deal executed now beats a perfect deal you are still negotiating next round.
+4. **Read the order book.** Items absent from offers are likely scarce — do not overpay for abundant ones. Items many traders are seeking are high-leverage.
+5. **Use private offers for key deals.** Whisper directly to the trader who has what you need. Public offers reveal your strategy to all competitors.
+6. **Accept quickly.** Good offers disappear. If an offer advances your goals, accept it before another agent does.
 
-Valid actions:
-{"action": "post_offer",     "give": {"item": qty}, "want": {"item": qty}, "message": "..."}
-{"action": "private_offer",  "give": {"item": qty}, "want": {"item": qty}, "target_agent": <int>, "message": "..."}
-{"action": "accept_offer",   "offer_id": <int>, "message": "..."}
-{"action": "pass_turn",      "message": "..."}
+## Output Format
+Reason briefly about your best move, then output exactly one JSON action. No markdown fences, no text outside the JSON.
 
-Output ONLY the JSON object. No preamble, no markdown fences."""
+{"action": "post_offer",    "give": {"item": qty}, "want": {"item": qty}, "message": "..."}
+{"action": "private_offer", "give": {"item": qty}, "want": {"item": qty}, "target_agent": <int>, "message": "..."}
+{"action": "accept_offer",  "offer_id": <int>, "message": "..."}
+{"action": "pass_turn",     "message": "..."}"""
+
+
+class HeuristicAgent:
+    """Greedy heuristic opponent — no LLM, much harder ceiling than RandomAgent.
+
+    Strategy:
+    - Accept any offer that strictly improves goal completion
+    - Post offers giving surplus items in exchange for needed items
+    - Target traders who recently received items it needs
+    """
+
+    def __init__(self, agent_idx: int, target: dict):
+        self.agent_idx = agent_idx
+        self.model_name = "heuristic"
+        self.target = target
+
+    def _goal_completion(self, inventory: dict) -> float:
+        if not self.target:
+            return 1.0
+        parts = [min(inventory.get(item, 0) / qty, 1.0)
+                 for item, qty in self.target.items() if qty > 0]
+        return sum(parts) / len(parts) if parts else 1.0
+
+    def _apply_trade(self, inventory: dict, give: dict, want: dict) -> dict:
+        inv = dict(inventory)
+        for item, qty in give.items():
+            inv[item] = inv.get(item, 0) - qty
+        for item, qty in want.items():
+            inv[item] = inv.get(item, 0) + qty
+        return inv
+
+    def act(self, obs: dict) -> dict:
+        inventory = obs.get("inventory", {})
+        order_book = obs.get("order_book", [])
+        current_gc = self._goal_completion(inventory)
+
+        # 1. Accept the best offer that improves goal completion
+        best_offer = None
+        best_gc = current_gc
+        for offer in order_book:
+            if offer.get("poster") == self.agent_idx:
+                continue
+            # Check we can afford it
+            can_afford = all(inventory.get(item, 0) >= qty
+                             for item, qty in offer.get("want", {}).items())
+            if not can_afford:
+                continue
+            new_inv = self._apply_trade(inventory, offer.get("want", {}), offer.get("give", {}))
+            new_gc = self._goal_completion(new_inv)
+            if new_gc > best_gc:
+                best_gc = new_gc
+                best_offer = offer
+
+        if best_offer:
+            return {"action": "accept_offer", "offer_id": best_offer["id"], "message": ""}
+
+        # 2. Post an offer: give a surplus item, ask for a needed item
+        needed = {item: qty - inventory.get(item, 0)
+                  for item, qty in self.target.items()
+                  if inventory.get(item, 0) < qty}
+        surplus = {item: qty for item, qty in inventory.items()
+                   if item not in self.target or qty > self.target[item]}
+
+        if needed and surplus:
+            want_item = max(needed, key=lambda i: needed[i])
+            give_item = next(iter(surplus))
+            give_qty = min(1, surplus[give_item])
+            want_qty = min(1, needed[want_item])
+            return {
+                "action": "post_offer",
+                "give": {give_item: give_qty},
+                "want": {want_item: want_qty},
+                "message": "",
+            }
+
+        return {"action": "pass_turn", "message": ""}
 
 
 def _goal_completion(inventory: dict, target: dict) -> float:
@@ -92,11 +171,16 @@ class BarterBenchEnv(vf.MultiTurnEnv):
     """Single-agent BarterBench environment.
 
     Each rollout is one complete marketplace match. The model controls agent 0;
-    all other agents are RandomAgents. Reward = goal completion (0–1).
+    opponent agents fill the remaining slots. Reward = goal completion (0–1).
+
+    opponent="random"    — RandomAgents (fast, easy ceiling, good for early training)
+    opponent="heuristic" — HeuristicAgents (no LLM, greedy-optimal, much harder ceiling)
     """
 
-    def __init__(self, scenario_name: str = "spice_wars", **kwargs):
+    def __init__(self, scenario_name: str = "spice_wars",
+                 opponent: str = "heuristic", **kwargs):
         self.scenario_name = scenario_name
+        self.opponent = opponent
         super().__init__(**kwargs)
 
     async def setup_state(self, state: vf.State, **kwargs) -> vf.State:
@@ -111,14 +195,22 @@ class BarterBenchEnv(vf.MultiTurnEnv):
 
         n_agents = len(scenario["agents"])
 
-        # Agent 0 = the model under test; rest = random
-        random_agents = [RandomAgent(model_name="random", agent_idx=i) for i in range(1, n_agents)]
+        # Agent 0 = the model under test; rest = opponents
+        if self.opponent == "heuristic":
+            opponents = [
+                HeuristicAgent(agent_idx=i,
+                               target=scenario["agents"][i].get("target", {}))
+                for i in range(1, n_agents)
+            ]
+        else:  # "random"
+            opponents = [RandomAgent(model_name="random", agent_idx=i)
+                         for i in range(1, n_agents)]
 
         engine = MarketEngine(scenario)
         state["engine"] = engine
         state["scenario"] = scenario
         state["agent_idx"] = 0
-        state["random_agents"] = random_agents
+        state["random_agents"] = opponents
         state["round_num"] = 0
         state["max_rounds"] = scenario.get("rounds", 10)
         state["done"] = False
@@ -188,6 +280,7 @@ def load_environment(
     scenario: str = "spice_wars",
     num_examples: int = 50,
     seed: int = 42,
+    opponent: str = "heuristic",
 ) -> vf.Environment:
     """Load the BarterBench environment.
 
@@ -240,6 +333,7 @@ def load_environment(
 
     env = BarterBenchEnv(
         scenario_name=scenario,
+        opponent=opponent,
         dataset=dataset,
         system_prompt=SYSTEM_PROMPT,
         rubric=rubric,
