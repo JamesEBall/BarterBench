@@ -17,8 +17,8 @@ from pathlib import Path
 
 from agent import MarketAgent, RandomAgent
 from engine import MarketEngine
-from elo import record_match, print_elo_leaderboard, reset_ratings, load_ratings, file_lock
-from bradley_terry import compute_bt_ratings, print_bt_leaderboard, reset_bt
+from elo import record_match, print_elo_leaderboard, reset_ratings, load_ratings, load_match_log, file_lock
+from bradley_terry import compute_bt_ratings, print_bt_leaderboard, reset_bt, fit_bradley_terry
 from scoring import compute_metrics, compute_cost_efficiency
 from model_registry import get_model_info, compute_dollar_cost, get_size_tier
 
@@ -91,13 +91,18 @@ def auto_model_config(scenario):
     return half, n - half
 
 
-def assign_models(model_config, num_agents):
+def assign_models(model_config, num_agents, rng=None):
     """Assign models to agent slots with stratified pairing.
 
     For 2-model matchups, paired role slots (0&1, 2&3, etc.) get one of each model
     so neither model monopolises structurally advantaged positions.
     Falls back to random shuffle for >2 models or odd slot counts.
+
+    rng: a random.Random instance (required for thread-safety in parallel runs).
+         Falls back to the module-level random if not provided.
     """
+    _rng = rng or random
+
     assignments = []
     for model, count in model_config:
         assignments.extend([model] * count)
@@ -113,12 +118,12 @@ def assign_models(model_config, num_agents):
         result = [None] * num_agents
         for pair_start in range(0, num_agents, 2):
             pair = list(models)
-            random.shuffle(pair)
+            _rng.shuffle(pair)
             result[pair_start] = pair[0]
             result[pair_start + 1] = pair[1]
         return result
     else:
-        random.shuffle(assignments)
+        _rng.shuffle(assignments)
         return assignments
 
 
@@ -477,11 +482,12 @@ def run_matrix(models, runs_per_pair, verbose, simultaneous=False, parallel=1,
 def run_single(scenario_name, scenario, model_config, model_config_str, run_id, verbose,
                simultaneous=False, live_updates=True, temperature=1.0, history_rounds=3):
     """Run a single marketplace match. Returns the result entry."""
-    # Seed RNG for reproducibility — each run gets a unique but deterministic seed
+    # Seed RNG for reproducibility — use a local Random instance for thread-safety
+    # (module-level random.seed() is not safe when parallel=N > 1)
     seed = hash((scenario_name, run_id)) % (2**32)
-    random.seed(seed)
+    rng = random.Random(seed)
     num_agents = len(scenario["agents"])
-    model_assignments = assign_models(model_config, num_agents)
+    model_assignments = assign_models(model_config, num_agents, rng=rng)
     agents = []
     for i in range(num_agents):
         if model_assignments[i] == "random":
@@ -532,6 +538,22 @@ def run_single(scenario_name, scenario, model_config, model_config_str, run_id, 
             "agent_results": result["agent_results"],
             "trades": result["trades"],
             "history": clean_history,
+        }
+
+        # Resolved model version strings — maps alias → full API model ID for reproducibility
+        def _resolved_model(agent):
+            if agent.backend == "openrouter":
+                return agent.model  # e.g. "openrouter/meta-llama/llama-3.3-70b-instruct:free"
+            elif agent.backend == "api":
+                return agent.model  # e.g. "claude-haiku-4-5-20251001"
+            elif agent.backend == "cli":
+                return agent.cli_model
+            return agent.model_name  # random or unknown
+
+        entry["model_versions"] = {
+            a.model_name: _resolved_model(a)
+            for a in agents
+            if a.model_name not in ("random",)
         }
 
         # Model metadata (dimensions for analysis: size, family, provider, cost tier)
@@ -1471,9 +1493,366 @@ def run_suite(test_models, verbose):
 
     print(f"\n{'='*80}")
     print(f"\nResults saved to {RESULTS_FILE}")
+    print_full_report()
+    report_path = RESULTS_FILE.parent / "report.json"
+    with open(report_path, "w") as f:
+        json.dump(build_report_data(), f, indent=2)
+    print(f"  JSON report saved to {report_path}")
+
+
+def build_report_data() -> dict:
+    """Return all report data as a JSON-serialisable dict.
+
+    Used by --report --json and the auto-saved report.json after each suite run.
+    """
+    results_files = [RESULTS_FILE, BENCHMARK_RESULTS_FILE]
+    all_entries = []
+    for rf in results_files:
+        if rf.exists():
+            with open(rf) as f:
+                all_entries.extend(json.load(f))
+
+    valid = [e for e in all_entries if not e.get("error")]
+    entries_with_pm = [e for e in valid if e.get("process_metrics")]
+
+    # ── Dataset metadata ─────────────────────────────────────────────────────
+    scenarios = sorted({e.get("scenario", "") for e in valid if e.get("scenario")})
+    timestamps = sorted(e["timestamp"] for e in valid if e.get("timestamp"))
+    gc_models = set()
+    for e in valid:
+        gc_models.update(e.get("model_goal_completion", {}).keys())
+
+    dataset = {
+        "total_valid_runs": len(valid),
+        "models_evaluated": len(gc_models),
+        "scenarios": scenarios,
+        "date_range": {
+            "first": timestamps[0] if timestamps else None,
+            "last": timestamps[-1] if timestamps else None,
+        },
+        "results_file": str(RESULTS_FILE),
+    }
+
+    # ── ELO leaderboard ──────────────────────────────────────────────────────
+    elo_ratings = load_ratings()
+    match_log = load_match_log()
+
+    elo_match_counts = {}
+    elo_win_counts = {}
+    for m in match_log:
+        for model in [m["model_a"], m["model_b"]]:
+            elo_match_counts[model] = elo_match_counts.get(model, 0) + 1
+        if m["winner"] != "draw":
+            elo_win_counts[m["winner"]] = elo_win_counts.get(m["winner"], 0) + 1
+
+    elo_rows = []
+    for rank, (model, elo) in enumerate(
+        sorted(elo_ratings.items(), key=lambda x: x[1], reverse=True), 1
+    ):
+        matches = elo_match_counts.get(model, 0)
+        wins = elo_win_counts.get(model, 0)
+        losses = 0
+        draws = 0
+        for m in match_log:
+            if m["model_a"] == model or m["model_b"] == model:
+                if m["winner"] == "draw":
+                    draws += 1
+                elif m["winner"] != model:
+                    losses += 1
+        elo_rows.append({
+            "rank": rank, "model": model, "elo": round(elo, 1),
+            "wins": wins, "losses": losses, "draws": draws, "matches": matches,
+        })
+
+    # ── Bradley-Terry leaderboard ────────────────────────────────────────────
+    bt_ratings = fit_bradley_terry(match_log)
+
+    bt_match_counts = {}
+    bt_win_counts = {}
+    for m in match_log:
+        for model in [m["model_a"], m["model_b"]]:
+            bt_match_counts[model] = bt_match_counts.get(model, 0) + 1
+        if m["winner"] != "draw":
+            bt_win_counts[m["winner"]] = bt_win_counts.get(m["winner"], 0) + 1
+
+    bt_rows = []
+    for rank, (model, rating) in enumerate(
+        sorted(bt_ratings.items(), key=lambda x: x[1], reverse=True), 1
+    ):
+        total = bt_match_counts.get(model, 0)
+        wins = bt_win_counts.get(model, 0)
+        win_pct = (wins / total) if total > 0 else 0.0
+        bt_rows.append({
+            "rank": rank, "model": model, "bt_rating": round(rating, 1),
+            "win_pct": round(win_pct, 4), "matches": total,
+        })
+
+    # ── Goal completion per model ─────────────────────────────────────────────
+    gc_sums = {}
+    gc_cnts = {}
+    gc_sq_sums = {}
+    for entry in valid:
+        for model, score in entry.get("model_goal_completion", {}).items():
+            gc_sums.setdefault(model, 0)
+            gc_sums[model] += score
+            gc_cnts.setdefault(model, 0)
+            gc_cnts[model] += 1
+            gc_sq_sums.setdefault(model, 0.0)
+            gc_sq_sums[model] += score * score
+
+    # ── Process metrics per model ─────────────────────────────────────────────
+    METRIC_KEYS = [
+        ("trade_efficiency_ratio",    "trade_efficiency_ratio",           "per_model"),
+        ("information_security_score","information_security_score",        "per_model"),
+        ("information_security_score","information_security_score_active", "per_model_active"),
+        ("offer_execution_rate",      "offer_execution_rate",             "per_model"),
+        ("trade_relevance_rate",      "trade_relevance_rate",             "per_model"),
+    ]
+
+    pm_sums = {out_key: {} for _, out_key, _ in METRIC_KEYS}
+    pm_cnts = {out_key: {} for _, out_key, _ in METRIC_KEYS}
+
+    for entry in entries_with_pm:
+        pm = entry["process_metrics"]
+        for metric_key, out_key, field in METRIC_KEYS:
+            if metric_key not in pm:
+                continue
+            field_data = pm[metric_key].get(field, {})
+            if not isinstance(field_data, dict):
+                continue
+            for model, val in field_data.items():
+                if val is None:
+                    continue
+                pm_sums[out_key].setdefault(model, 0.0)
+                pm_sums[out_key][model] += val
+                pm_cnts[out_key].setdefault(model, 0)
+                pm_cnts[out_key][model] += 1
+
+    # ── Model metadata & versions ─────────────────────────────────────────────
+    model_metadata = {}
+    model_versions = {}
+    for entry in all_entries:
+        for model, meta in entry.get("model_metadata", {}).items():
+            if model not in model_metadata and meta:
+                model_metadata[model] = meta
+        for model, ver in entry.get("model_versions", {}).items():
+            if model not in model_versions and ver:
+                model_versions[model] = ver
+
+    # ── Assemble per_model dict ───────────────────────────────────────────────
+    all_models = sorted(set(
+        list(gc_sums.keys()) +
+        [m for ok in pm_sums for m in pm_sums[ok]]
+    ))
+
+    per_model = {}
+    for model in all_models:
+        cnt = gc_cnts.get(model, 0)
+        mean = (gc_sums[model] / cnt) if cnt else None
+        if cnt > 1:
+            variance = (gc_sq_sums[model] / cnt) - (mean * mean)
+            std = math.sqrt(max(variance, 0.0))
+        else:
+            std = None
+
+        proc = {}
+        for _, out_key, _ in METRIC_KEYS:
+            c = pm_cnts[out_key].get(model, 0)
+            proc[out_key] = round(pm_sums[out_key][model] / c, 6) if c else None
+
+        per_model[model] = {
+            "goal_completion_mean": round(mean, 6) if mean is not None else None,
+            "goal_completion_std": round(std, 6) if std is not None else None,
+            "n_runs": cnt,
+            "process_metrics": proc,
+            "metadata": model_metadata.get(model),
+            "model_version": model_versions.get(model),
+        }
+
+    # ── Key findings ──────────────────────────────────────────────────────────
+    iss_vals = []
+    rev_count = 0
+    for entry in entries_with_pm:
+        iss = entry["process_metrics"].get("information_security_score", {})
+        iss_vals.append(iss.get("overall", 1.0))
+        rev_count += iss.get("revelation_count", 0)
+
+    avg_iss_pct = round(sum(iss_vals) / len(iss_vals) * 100, 2) if iss_vals else None
+    cooperative_norm = bool(avg_iss_pct is not None and avg_iss_pct < 20)
+
+    best_model = None
+    best_gc_pct = None
+    if gc_sums:
+        best_model = max(gc_sums, key=lambda m: gc_sums[m] / gc_cnts[m] if gc_cnts.get(m) else 0)
+        best_gc_pct = round(gc_sums[best_model] / gc_cnts[best_model] * 100, 2)
+
+    random_cnt = gc_cnts.get("random", 0)
+    random_gc_pct = round(gc_sums["random"] / random_cnt * 100, 2) if random_cnt else None
+    n_models_above_random = None
+    if random_gc_pct is not None:
+        threshold = random_gc_pct / 100
+        n_models_above_random = sum(
+            1 for m in gc_sums
+            if m != "random" and gc_cnts.get(m, 0) > 0
+            and gc_sums[m] / gc_cnts[m] > threshold
+        )
+
+    key_findings = {
+        "avg_iss_percent": avg_iss_pct,
+        "total_goal_revelations": rev_count,
+        "cooperative_norm_transfer_confirmed": cooperative_norm,
+        "best_model": best_model,
+        "best_model_goal_completion_pct": best_gc_pct,
+        "random_baseline_goal_completion_pct": random_gc_pct,
+        "n_models_above_random": n_models_above_random,
+    }
+
+    return {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "dataset": dataset,
+        "leaderboard": {"elo": elo_rows, "bradley_terry": bt_rows},
+        "per_model": per_model,
+        "key_findings": key_findings,
+    }
+
+
+def print_full_report():
+    """Print a complete CLI report: ELO/BT leaderboard + process metrics + key findings.
+
+    Can be called standalone via: python3 eval.py --report
+    Automatically called at the end of every suite run.
+    """
     print_elo_leaderboard()
     compute_bt_ratings()
     print_bt_leaderboard()
+
+    # ── Process Metrics ──────────────────────────────────────────────────────
+    results_files = [RESULTS_FILE, BENCHMARK_RESULTS_FILE]
+    all_entries = []
+    for rf in results_files:
+        if rf.exists():
+            with open(rf) as f:
+                all_entries.extend(json.load(f))
+
+    entries_with_pm = [e for e in all_entries if e.get("process_metrics") and not e.get("error")]
+    if not entries_with_pm:
+        print("\n  No process metrics yet — run: python3 backfill_process_metrics.py")
+        return
+
+    METRIC_KEYS = [
+        ("trade_efficiency_ratio",    "TER",     "ratio"),
+        ("information_security_score","ISS",      "pct"),
+        ("information_security_score","ISS_act",  "pct_active"),
+        ("offer_execution_rate",      "OER",      "pct"),
+        ("trade_relevance_rate",      "TRR",      "pct"),
+    ]
+
+    model_sums = {k: {} for _, k, _ in METRIC_KEYS}
+    model_cnts = {k: {} for _, k, _ in METRIC_KEYS}
+
+    for entry in entries_with_pm:
+        pm = entry["process_metrics"]
+        for metric_key, label, mode in METRIC_KEYS:
+            if metric_key not in pm:
+                continue
+            field = "per_model_active" if mode == "pct_active" else "per_model"
+            for model, val in pm[metric_key].get(field, {}).items():
+                if val is None:
+                    continue
+                model_sums[label].setdefault(model, 0)
+                model_sums[label][model] += val
+                model_cnts[label].setdefault(model, 0)
+                model_cnts[label][model] += 1
+
+    # Also pull goal completion from entries
+    gc_sums = {}
+    gc_cnts = {}
+    for entry in all_entries:
+        if entry.get("error"):
+            continue
+        for model, score in entry.get("model_goal_completion", {}).items():
+            gc_sums.setdefault(model, 0)
+            gc_sums[model] += score
+            gc_cnts.setdefault(model, 0)
+            gc_cnts[model] += 1
+
+    all_models = sorted(set(
+        list(gc_sums.keys()) +
+        [m for lbl in model_sums for m in model_sums[lbl]]
+    ))
+
+    W = 90
+    print(f"\n{'='*W}")
+    print(f"  PROCESS METRICS  ({len(entries_with_pm)} runs with metrics)")
+    print(f"{'='*W}")
+    col_labels = ["GoalC%"] + [lbl for _, lbl, _ in METRIC_KEYS]
+    header = f"  {'Model':<18s}"
+    for lbl in col_labels:
+        header += f" {lbl:>8s}"
+    print(header)
+    print(f"  {'─'*18}" + "─" * (9 * len(col_labels)))
+
+    for model in all_models:
+        row = f"  {model:<18s}"
+        # Goal completion
+        cnt = gc_cnts.get(model, 0)
+        row += f" {gc_sums[model]/cnt*100:>7.1f}%" if cnt else f" {'N/A':>8s}"
+        # Process metrics
+        for _, lbl, mode in METRIC_KEYS:
+            cnt = model_cnts[lbl].get(model, 0)
+            if cnt:
+                avg = model_sums[lbl][model] / cnt
+                fmt = f"{avg:>8.3f}" if lbl == "TER" else f"{avg*100:>7.1f}%"
+                row += f" {fmt}"
+            else:
+                row += f" {'N/A':>8s}"
+        print(row)
+
+    print(f"\n  TER: trade efficiency ratio (>1 = net gain per trade)")
+    print(f"  ISS: information security score (higher = better goal concealment)")
+    print(f"  ISS_act: ISS for communicative agents only (controls verbosity confound)")
+    print(f"  OER: offer execution rate (fraction of posted offers accepted)")
+    print(f"  TRR: trade relevance rate (fraction of trades that advanced agent goals)")
+
+    # ── Key Findings ─────────────────────────────────────────────────────────
+    valid = [e for e in all_entries if not e.get("error") and e.get("model_goal_completion")]
+    if valid:
+        print(f"\n{'='*W}")
+        print(f"  KEY FINDINGS")
+        print(f"{'='*W}")
+
+        # ISS finding
+        iss_vals = []
+        for entry in entries_with_pm:
+            pm = entry["process_metrics"].get("information_security_score", {})
+            iss_vals.append(pm.get("overall", 1.0))
+        if iss_vals:
+            avg_iss = sum(iss_vals) / len(iss_vals) * 100
+            rev_count = sum(pm.get("revelation_count", 0)
+                           for e in entries_with_pm
+                           for pm in [e["process_metrics"].get("information_security_score", {})])
+            print(f"  Goal revelation:  avg ISS={avg_iss:.1f}%  ({rev_count} explicit goal disclosures across all runs)")
+            if avg_iss < 20:
+                print(f"  ► All models reveal target items immediately — cooperative norm transfer confirmed.")
+
+        # Best model
+        best = max(gc_sums, key=lambda m: gc_sums[m]/gc_cnts[m] if gc_cnts.get(m) else 0)
+        best_gc = gc_sums[best] / gc_cnts[best] * 100
+        random_gc = gc_sums.get("random", 0)
+        random_cnt = gc_cnts.get("random", 0)
+        if random_cnt:
+            random_gc_pct = random_gc / random_cnt * 100
+            print(f"  Best model:       {best} @ {best_gc:.1f}% goal completion  "
+                  f"(random baseline: {random_gc_pct:.1f}%)")
+        else:
+            print(f"  Best model:       {best} @ {best_gc:.1f}% goal completion")
+
+        n_runs = len(valid)
+        n_models = len([m for m in gc_sums if gc_cnts.get(m, 0) > 0])
+        print(f"  Dataset:          {n_runs} valid runs, {n_models} models evaluated")
+        print(f"  Results file:     {RESULTS_FILE}")
+        print(f"  Dashboard:        python3 eval.py --serve")
+    print(f"{'='*W}\n")
 
 
 def serve_dashboard():
@@ -1551,6 +1930,10 @@ def main():
     parser.add_argument("--resume", nargs="?", const="checkpoint.json", default=None,
                         help="Resume from checkpoint file (default: checkpoint.json)")
     # Analysis & reporting
+    parser.add_argument("--report", action="store_true",
+                        help="Print full CLI report: leaderboard + process metrics (ISS/TER/OER/TRR) + key findings")
+    parser.add_argument("--json", action="store_true",
+                        help="Output report as machine-readable JSON to stdout (use with --report)")
     parser.add_argument("--scaling-report", action="store_true",
                         help="Print scaling analysis (performance vs model size/cost)")
     parser.add_argument("--behavior-report", action="store_true",
@@ -1562,6 +1945,17 @@ def main():
 
     if args.serve:
         serve_dashboard()
+        return
+
+    if args.json and not args.report:
+        print("Error: --json requires --report", file=sys.stderr)
+        sys.exit(1)
+
+    if args.report:
+        if args.json:
+            print(json.dumps(build_report_data(), indent=2))
+        else:
+            print_full_report()
         return
 
     if args.resume:
@@ -1715,6 +2109,17 @@ def main():
     if not args.eval:
         print("BarterBench: competitive marketplace benchmark with ELO ratings")
         print()
+        print("Eval Suite (recommended — standardised benchmark against haiku anchor):")
+        print("  python3 eval.py --suite --models random,sonnet          # single model + random floor")
+        print("  python3 eval.py --suite --models random,sonnet,gpt-4o --parallel 4")
+        print()
+        print("View results (no re-run needed):")
+        print("  python3 eval.py --report            # Full CLI report: leaderboard + ISS/TER/OER/TRR + findings")
+        print("  python3 eval.py --elo               # ELO + Bradley-Terry leaderboard only")
+        print("  python3 eval.py --scaling-report    # Performance vs model size/cost")
+        print("  python3 eval.py --behavior-report   # Emergent behavior taxonomy")
+        print("  python3 eval.py --serve             # Web dashboard (replay viewer, charts)")
+        print()
         print("Benchmark mode (hybrid anchor — fast leaderboard):")
         print("  python3 eval.py --benchmark --models sonnet,opus --runs 3")
         print("  python3 eval.py --benchmark --anchor sonnet --models opus,haiku --eval grand_bazaar")
@@ -1725,18 +2130,11 @@ def main():
         print()
         print("Arena mode (compare prompt strategies across models):")
         print("  python3 eval.py --arena --eval all --runs 3")
-        print("  python3 eval.py --arena --models haiku,sonnet,opus --eval all")
         print("  python3 eval.py --submit 'my_strat' 'Trade aggressively'")
         print()
-        print("Cross-provider matrix (all pairwise comparisons):")
+        print("Other:")
         print("  python3 eval.py --matrix --models haiku,sonnet,opus,hunter --runs 3")
-        print()
-        print("Analysis:")
-        print("  python3 eval.py --scaling-report    # Performance vs model size/cost")
-        print("  python3 eval.py --behavior-report   # Emergent behavior taxonomy")
-        print("  python3 eval.py --elo               # View ELO ratings")
         print("  python3 eval.py --list              # List scenarios & strategies")
-        print("  python3 eval.py --serve             # Dashboard")
         return
 
     if not args.models:

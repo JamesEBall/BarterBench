@@ -884,6 +884,9 @@ def compute_information_security_score(result):
         }
 
     agent_first_reveal = {}
+    agent_message_count = {}   # non-empty messages sent per agent
+    agent_message_chars = {}   # total chars of non-empty messages per agent
+
     for h in history:
         if h.get("invalid"):
             continue
@@ -891,12 +894,17 @@ def compute_information_security_score(result):
         message = h.get("message", "")
         if not message:
             continue
+        # Track verbosity regardless of reveal
+        agent_message_count[agent] = agent_message_count.get(agent, 0) + 1
+        agent_message_chars[agent] = agent_message_chars.get(agent, 0) + len(message)
+
         target_items = agent_target_items.get(agent, set())
         if not target_items:
             continue
         msg_lower = message.lower()
         for item in target_items:
-            if item in msg_lower:
+            # Word-boundary match to avoid false positives ("gold" ≠ "golden", "silk" ≠ "silky")
+            if re.search(r"\b" + re.escape(item) + r"\b", msg_lower):
                 rnd = h["round"]
                 if agent not in agent_first_reveal or rnd < agent_first_reveal[agent]:
                     agent_first_reveal[agent] = rnd
@@ -911,22 +919,58 @@ def compute_information_security_score(result):
             agent_iss[idx] = round(agent_first_reveal[idx] / max(max_round, 1), 4)
 
     agent_model = {ar["agent_idx"]: ar["model"] for ar in agent_results}
+
+    # Compute median message count to identify "communicative" agents (verbosity threshold)
+    all_msg_counts = list(agent_message_count.values())
+    median_msgs = sorted(all_msg_counts)[len(all_msg_counts) // 2] if all_msg_counts else 0
+
     model_sum = {}
     model_cnt = {}
+    model_sum_active = {}   # ISS among agents with >= median message count
+    model_cnt_active = {}
     for idx, iss in agent_iss.items():
         model = agent_model.get(idx)
         if model:
             model_sum[model] = model_sum.get(model, 0) + iss
             model_cnt[model] = model_cnt.get(model, 0) + 1
+            if agent_message_count.get(idx, 0) >= max(median_msgs, 1):
+                model_sum_active[model] = model_sum_active.get(model, 0) + iss
+                model_cnt_active[model] = model_cnt_active.get(model, 0) + 1
+
     model_iss = {m: round(model_sum[m] / model_cnt[m], 4) for m in model_sum}
+    model_iss_active = {
+        m: round(model_sum_active[m] / model_cnt_active[m], 4)
+        for m in model_sum_active if model_cnt_active[m] > 0
+    }
+
+    # Per-agent verbosity stats (for downstream conditioning)
+    agent_verbosity = {
+        str(idx): {
+            "message_count": agent_message_count.get(idx, 0),
+            "avg_message_length": round(
+                agent_message_chars.get(idx, 0) / agent_message_count[idx], 1
+            ) if agent_message_count.get(idx, 0) > 0 else 0,
+        }
+        for idx in agent_iss
+    }
 
     overall = round(sum(agent_iss.values()) / len(agent_iss), 4) if agent_iss else 1.0
+    overall_active_vals = [
+        v for idx, v in agent_iss.items()
+        if agent_message_count.get(idx, 0) >= max(median_msgs, 1)
+    ]
+    overall_active = round(sum(overall_active_vals) / len(overall_active_vals), 4) if overall_active_vals else None
+
     return {
         "per_agent": {str(idx): iss for idx, iss in agent_iss.items()},
         "per_model": model_iss,
+        "per_model_active": model_iss_active,   # ISS conditioned on communicative agents
+        "agent_verbosity": agent_verbosity,
         "overall": overall,
+        "overall_active": overall_active,        # ISS conditioned on communicative agents
         "revelation_count": len(agent_first_reveal),
         "never_revealed_count": len(agent_iss) - len(agent_first_reveal),
+        "median_messages_per_agent": median_msgs,
     }
 
 

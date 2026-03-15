@@ -411,7 +411,7 @@ class MarketAgent:
         messages.append({"role": "user", "content": "It's your turn. Choose your action."})
 
         turn_start = time.monotonic()
-        for attempt in range(3):
+        for attempt in range(6):
             try:
                 response = self.client.messages.create(
                     model=self.model,
@@ -424,8 +424,9 @@ class MarketAgent:
                 )
                 break
             except anthropic.RateLimitError:
-                if attempt < 2:
-                    time.sleep(2 ** attempt)
+                if attempt < 5:
+                    wait = min(30 * (2 ** attempt), 300)
+                    time.sleep(wait)
                 else:
                     raise
         self.turn_latencies.append(round(time.monotonic() - turn_start, 3))
@@ -513,7 +514,8 @@ class MarketAgent:
 
         turn_start = time.monotonic()
         response = None
-        for attempt in range(3):
+        max_attempts = 6
+        for attempt in range(max_attempts):
             try:
                 response = self.client.chat.completions.create(
                     model=self.model,
@@ -526,10 +528,17 @@ class MarketAgent:
                 if response and response.choices:
                     break
                 # Response came back empty — retry
-                if attempt < 2:
+                if attempt < max_attempts - 1:
                     time.sleep(1)
             except Exception as e:
-                if attempt < 2:
+                err_str = str(e)
+                is_rate_limit = "429" in err_str or "rate limit" in err_str.lower() or (
+                    hasattr(e, "status_code") and getattr(e, "status_code", None) == 429
+                )
+                if is_rate_limit and attempt < max_attempts - 1:
+                    wait = min(30 * (2 ** attempt), 300)  # 30s, 60s, 120s, 240s, 300s cap
+                    time.sleep(wait)
+                elif attempt < max_attempts - 1:
                     time.sleep(2 ** attempt)
                 else:
                     # Final attempt: fall back to plain text (no tools)

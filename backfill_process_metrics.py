@@ -29,6 +29,8 @@ METRIC_NAMES = {
     "offer_execution_rate": "OER",
     "trade_relevance_rate": "TRR",
 }
+# ISS_active uses per_model_active instead of per_model — shown alongside ISS
+ISS_ACTIVE_KEY = "information_security_score"
 
 
 def compute_process_metrics(entry):
@@ -116,11 +118,26 @@ def print_summary(path):
         m for k in METRIC_NAMES for m in model_sums[k]
     ))
 
+    # Also aggregate ISS_active (per_model_active field)
+    iss_active_sums = {}
+    iss_active_cnts = {}
+    for entry in entries_with_pm:
+        pm = entry["process_metrics"]
+        iss = pm.get(ISS_ACTIVE_KEY, {})
+        for model, val in iss.get("per_model_active", {}).items():
+            if val is None:
+                continue
+            iss_active_sums.setdefault(model, 0)
+            iss_active_sums[model] += val
+            iss_active_cnts.setdefault(model, 0)
+            iss_active_cnts[model] += 1
+
+    col_labels = list(METRIC_NAMES.values()) + ["ISS_act"]
     header = f"  {'Model':<20s}"
-    for label in METRIC_NAMES.values():
+    for label in col_labels:
         header += f" {label:>8s}"
     print(header)
-    print(f"  {'─'*20}" + "─" * (9 * len(METRIC_NAMES)))
+    print(f"  {'─'*20}" + "─" * (9 * len(col_labels)))
 
     for model in models:
         row = f"  {model:<20s}"
@@ -134,6 +151,12 @@ def print_summary(path):
                     row += f" {avg*100:>7.1f}%"
             else:
                 row += f" {'N/A':>8s}"
+        # ISS_active column
+        cnt_a = iss_active_cnts.get(model, 0)
+        if cnt_a > 0:
+            row += f" {iss_active_sums[model] / cnt_a * 100:>7.1f}%"
+        else:
+            row += f" {'N/A':>8s}"
         print(row)
 
 

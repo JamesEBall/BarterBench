@@ -5,9 +5,9 @@
 A competitive marketplace benchmark for AI agents with ELO ratings. N agents trade scarce resources through an order book across fixed rounds. Models are pitted head-to-head and rated via pairwise ELO — new models can be introduced at any time without re-running existing matches. Works with any LLM or agent framework.
 
 **Three modes:**
-- **Eval Suite** — one-click standardized evaluation. Runs a model against a haiku anchor across all 4 scenarios (40 runs total), producing ELO + composite scores with 95% confidence intervals. `python3 eval.py --suite --models sonnet`
-- **Benchmark** — compare models head-to-head (haiku vs sonnet vs opus)
-- **Arena** — compare prompt strategies across models. Same benchmark, but contestants are (strategy, model) pairs. "Who can write the best barter agent prompt?"
+- **Eval Suite** — one-click standardized evaluation. Runs a model against a haiku anchor on Spice Wars (10 runs), producing ELO + composite scores with 95% CIs. Always include `random` as floor baseline. `python3 eval.py --suite --models random,sonnet`
+- **Benchmark** — compare models head-to-head with a shared anchor. `python3 eval.py --benchmark --models sonnet,gpt-4o --runs 5`
+- **Arena** — compare prompt strategies across models. Contestants are (strategy, model) pairs. "Who can write the best barter agent prompt?"
 
 ## Leaderboard
 
@@ -30,6 +30,22 @@ Existing multi-agent benchmarks for language models are either cooperative (ever
 | **BarterBench** | **N** | **Yes** | **Yes** | **Yes** |
 
 BarterBench is the first benchmark that combines N-agent interaction, designed scarcity, and competitive ELO-style evaluation for language model agents.
+
+### Key Findings
+
+Early results reveal a consistent failure mode across all tested models: **cooperative norm transfer**. In barter — a game where concealing your target is strategically dominant — models universally disclose their goal items in the opening round (Information Security Score ≈ 0%). This is not a reasoning failure; it is a *norm mismatch*. Models trained on helpful human dialogue import cooperative disclosure norms into a competitive setting where those norms are harmful.
+
+This finding connects to a broader pattern in LLM strategic reasoning:
+
+| Paper | Setting | Failure mode |
+|---|---|---|
+| [PACT](https://github.com/lechmazur/pact) (lechmazur) | Cooperative tasks | LLMs cooperate well when framing is clearly cooperative |
+| [Emergent Collusion](https://github.com/lechmazur/emergent_collusion/) (lechmazur) | Price-setting auctions (finance framing) | LLMs *over-strategise* — spontaneous cartel formation (Grok 4: 75%) |
+| **BarterBench** | Barter (conversational framing) | LLMs *under-strategise* — immediate goal revelation, cooperative norm bleedthrough |
+
+**Unified hypothesis**: models select strategies by pattern-matching to surface features of the prompt (professional finance → competitive norms; conversational barter → cooperative norms), not by reasoning about the underlying competitive structure.
+
+**Theoretical frame**: In mechanism design (Myerson 1981), the Revelation Principle guarantees you can always design a mechanism where truth-telling is dominant — but that mechanism must be explicitly constructed. Barter is not such a mechanism. Rational agents should conceal their targets. LLMs behave as if barter were truth-revealing, which is the failure ISS measures.
 
 ### AI Governance Perspective
 
@@ -364,7 +380,19 @@ Per-model sub-scores (0-1 scale) that decompose performance into distinct capabi
 | **Communication effectiveness** | Fraction of messages that preceded a trade with the recipient within 2 rounds |
 | **Strategic depth** | Composite of intermediary trades (acquiring items not in target) and private channel usage |
 
-### 4.13 Bootstrap Confidence Intervals
+### 4.13 Information Security Score (ISS)
+
+Measures whether agents protect their private target information during play.
+
+**ISS** = fraction of turns where an agent's messages do not mention their target items. ISS = 1.0 is perfect secrecy; ISS = 0.0 means the agent revealed their goal in round 0.
+
+**ISS_active** (verbosity-conditioned) = same score, restricted to agents who sent at least a median number of non-empty messages. This controls for the verbosity confound: a silent agent trivially scores 1.0. ISS_active confirms that high-ISS agents are genuinely strategic, not merely terse.
+
+Both ISS and ISS_active are reported per-model in the results JSON under `process_metrics.information_security_score.per_model` and `.per_model_active`.
+
+In early results, all tested models (including the strongest frontier models) achieve ISS ≈ 0%, immediately disclosing their goals in round 0. The random agent — which has no language — trivially achieves ISS = 100%, making it an important floor baseline.
+
+### 4.14 Bootstrap Confidence Intervals
 
 For cross-run model comparisons, 1000-resample bootstrap confidence intervals with p-values determine whether score differences are statistically significant.
 
@@ -430,17 +458,19 @@ A key property of Elo ratings: **new contestants can be added at any time** with
 
 ### Eval Suite (standardized one-click evaluation)
 
-Fixed battery: each test model vs haiku anchor across all 4 eval-compatible scenarios (gold_rush, water_crisis, spice_wars, grand_bazaar), 10 runs each. Produces comparable ELO + composite scores with 95% confidence intervals.
+Fixed battery: each test model vs haiku anchor, 10 runs per scenario. Produces ELO + composite scores with 95% confidence intervals. Always include `random` as the floor baseline.
+
+**Primary scenario**: Spice Wars (8 agents, 12 rounds, dual scarcity) — best cost/signal trade-off for frontier model benchmarking.
 
 ```bash
-# Evaluate sonnet (40 runs: 4 scenarios × 10 runs)
-python3 eval.py --suite --models sonnet
+# Evaluate sonnet vs haiku anchor, with random floor baseline (10 runs)
+python3 eval.py --suite --models random,sonnet
 
-# Evaluate multiple models (80 runs: 4 scenarios × 10 runs × 2 models)
-python3 eval.py --suite --models sonnet,opus
+# Evaluate multiple frontier models (run in parallel to save time)
+python3 eval.py --suite --models random,sonnet,gpt-4o,gemini-2.0-flash --parallel 4
 ```
 
-Each model is always paired 1:1 against haiku — never against each other in the same run. Agent counts per scenario: gold_rush (3v3), water_crisis (4v4), spice_wars (5v5), grand_bazaar (6v6).
+Each model is paired 1:1 against haiku — never against each other in the same run. Agent counts in Spice Wars: 5 haiku vs 5 test model agents. The `random` model requires no API calls and runs as a free baseline in every suite.
 
 ### Hybrid Anchor Benchmark (fast leaderboard)
 
@@ -553,6 +583,13 @@ python3 eval.py --matrix --models haiku,sonnet,hunter,llama-70b --runs 3
 Post-hoc analysis on accumulated results:
 
 ```bash
+# Full CLI report: ELO/BT leaderboard + process metrics (ISS/TER/OER/TRR) + key findings
+python3 eval.py --report
+
+# Machine-readable JSON (same data, piped to stdout; report.json also auto-saved after every suite run)
+python3 eval.py --report --json
+python3 eval.py --report --json > report.json
+
 # Scaling analysis: performance vs model size, cost frontier, token efficiency
 python3 eval.py --scaling-report
 
@@ -674,7 +711,7 @@ The taxonomy module (`taxonomy.py`) automatically detects trading behaviors from
 
 ### Reproducibility
 
-Each run records full reproducibility metadata:
+Each run records full reproducibility metadata including resolved model version strings (important because API aliases like `"gpt-4o"` may silently resolve to updated model versions over time):
 
 ```json
 {
@@ -685,6 +722,11 @@ Each run records full reproducibility metadata:
     "seed": 3271842,
     "temperature": 1.0,
     "history_rounds": 3
+  },
+  "model_versions": {
+    "haiku":  "claude-haiku-4-5-20251001",
+    "sonnet": "claude-sonnet-4-6",
+    "gpt-4o": "openai/gpt-4o-2024-11-20"
   }
 }
 ```
