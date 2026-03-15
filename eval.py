@@ -1387,14 +1387,13 @@ def _monitor_experiment(exp_id, proc, scenario, total_runs):
 
 SUITE_SCENARIOS = ["gold_rush", "water_crisis", "spice_wars", "grand_bazaar"]
 SUITE_RUNS_PER_SCENARIO = 10
-SUITE_ANCHOR = "haiku"
+SUITE_ANCHOR = "random"
 
 
-def run_suite(test_models, verbose):
-    """Run standardized eval suite: each test model vs haiku anchor across all scenarios."""
+def run_suite(test_models, verbose, anchor=SUITE_ANCHOR):
+    """Run standardized eval suite: each test model vs anchor across all scenarios."""
     scenarios = SUITE_SCENARIOS
     runs_per = SUITE_RUNS_PER_SCENARIO
-    anchor = SUITE_ANCHOR
 
     total_per_model = len(scenarios) * runs_per
     total = total_per_model * len(test_models)
@@ -1902,8 +1901,8 @@ def main():
     # Benchmark mode (hybrid anchor)
     parser.add_argument("--benchmark", action="store_true",
                         help="Benchmark mode: test models against a cheap anchor model in one big scenario")
-    parser.add_argument("--anchor", type=str, default="haiku",
-                        help="Anchor model for benchmark mode (default: haiku)")
+    parser.add_argument("--anchor", type=str, default="random",
+                        help="Anchor model for benchmark/suite mode (default: random)")
     # Eval suite
     parser.add_argument("--suite", action="store_true",
                         help="Run standardized eval suite against haiku anchor across all scenarios")
@@ -2059,7 +2058,7 @@ def main():
         if not test_models:
             print(f"Error: --models must include at least one model besides the anchor ({SUITE_ANCHOR}).")
             sys.exit(1)
-        run_suite(test_models, args.verbose)
+        run_suite(test_models, args.verbose, anchor=args.anchor)
         return
 
     # ---- Procedural scenario generation ----

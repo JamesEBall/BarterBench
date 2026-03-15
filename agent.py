@@ -394,6 +394,7 @@ class MarketAgent:
             self.client = OpenAI(
                 base_url="https://openrouter.ai/api/v1",
                 api_key=os.environ.get("OPENROUTER_API_KEY", ""),
+                timeout=60.0,
             )
         elif self.backend == "api":
             import anthropic
@@ -553,7 +554,7 @@ class MarketAgent:
 
         turn_start = time.monotonic()
         response = None
-        max_attempts = 6
+        max_attempts = 3
         for attempt in range(max_attempts):
             try:
                 response = self.client.chat.completions.create(
@@ -575,10 +576,10 @@ class MarketAgent:
                     hasattr(e, "status_code") and getattr(e, "status_code", None) == 429
                 )
                 if is_rate_limit and attempt < max_attempts - 1:
-                    wait = min(30 * (2 ** attempt), 300)  # 30s, 60s, 120s, 240s, 300s cap
+                    wait = min(5 * (2 ** attempt), 30)  # 5s, 10s, 20s, 30s cap
                     time.sleep(wait)
                 elif attempt < max_attempts - 1:
-                    time.sleep(2 ** attempt)
+                    time.sleep(min(2 ** attempt, 10))
                 else:
                     # Final attempt: fall back to plain text (no tools)
                     try:
