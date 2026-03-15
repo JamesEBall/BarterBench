@@ -825,6 +825,79 @@ svg text { font-family: var(--mono); }
   color: var(--text3);
   margin-top: 2px;
 }
+
+/* ---- Tabs ---- */
+.tab-nav {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 1.75rem;
+  margin-top: 1rem;
+}
+.tab-btn {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 0.55rem 1.1rem;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--text3);
+  cursor: pointer;
+  margin-bottom: -1px;
+  transition: color 0.15s;
+}
+.tab-btn:hover { color: var(--text2); }
+.tab-btn.active { color: var(--text); border-bottom-color: var(--text); }
+
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
+/* ---- Findings panel ---- */
+.findings-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 1rem;
+}
+.findings-title {
+  font-family: var(--mono);
+  font-size: 0.6rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text3);
+  margin-bottom: 0.9rem;
+}
+.finding-item {
+  display: flex;
+  gap: 0.75rem;
+  align-items: baseline;
+  padding: 0.45rem 0;
+  border-bottom: 1px solid var(--border-light, #f0f0f0);
+  font-size: 0.8rem;
+  color: var(--text2);
+  line-height: 1.55;
+}
+.finding-item:last-child { border-bottom: none; }
+.finding-icon {
+  font-family: var(--mono);
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: var(--text3);
+  white-space: nowrap;
+  min-width: 1.5rem;
+  padding-top: 0.1rem;
+}
+.finding-text strong { color: var(--text); font-weight: 600; }
+.finding-empty {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  color: var(--text3);
+}
 </style>
 </head>
 <body>
@@ -906,6 +979,105 @@ svg text { font-family: var(--mono); }
   </div>
 </div>
 
+<!-- ==================== TAB NAV ==================== -->
+<div class="tab-nav">
+  <button class="tab-btn active" onclick="switchTab('overview', this)">Overview</button>
+  <button class="tab-btn" onclick="switchTab('analytics', this)">Analytics</button>
+  <button class="tab-btn" onclick="switchTab('replay', this)">Replay</button>
+</div>
+
+<!-- ==================== TAB: OVERVIEW ==================== -->
+<div class="tab-panel active" id="tab-overview">
+  <div class="findings-card">
+    <div class="findings-title">Key Findings</div>
+    <div id="findings"><span class="finding-empty">loading...</span></div>
+  </div>
+  <div class="card" style="margin-bottom:0">
+    <div class="card-label">leaderboard</div>
+    <table id="leaderboard"></table>
+  </div>
+</div>
+
+<!-- ==================== TAB: ANALYTICS ==================== -->
+<div class="tab-panel" id="tab-analytics">
+  <div class="filters" id="scenarioFilters" style="display:flex;gap:0.35rem;margin-bottom:1.25rem;flex-wrap:wrap"></div>
+
+  <!-- Scale -->
+  <div class="analytics-sub">Scale vs Performance</div>
+  <div class="card" style="margin-bottom:1rem">
+    <div class="card-label">goal completion vs model size<span class="card-hint">bubble = parameter count (B)</span></div>
+    <svg id="chartScale" viewBox="0 0 460 260" preserveAspectRatio="xMidYMid meet" style="width:100%;display:block"></svg>
+  </div>
+
+  <!-- Outcome -->
+  <div class="analytics-sub">Outcome</div>
+  <div class="content-grid">
+    <div class="card">
+      <div class="card-label">avg goal completion</div>
+      <svg id="chartGoal" viewBox="0 0 460 240" preserveAspectRatio="xMidYMid meet" style="width:100%;display:block"></svg>
+    </div>
+    <div class="card">
+      <div class="card-label">elo rating</div>
+      <svg id="chartElo" viewBox="0 0 460 240" preserveAspectRatio="xMidYMid meet" style="width:100%;display:block"></svg>
+    </div>
+  </div>
+
+  <!-- Process Metrics -->
+  <div class="analytics-sub">Process Metrics <span class="analytics-sub-note">barter capability decomposition</span></div>
+  <div class="content-grid">
+    <div class="card">
+      <div class="card-label">trade efficiency ratio (TER)<span class="card-hint">fair value received ÷ given — 1.0 = fair</span></div>
+      <svg id="chartTER" viewBox="0 0 460 220" preserveAspectRatio="xMidYMid meet" style="width:100%;display:block"></svg>
+    </div>
+    <div class="card">
+      <div class="card-label">offer execution rate (OER)<span class="card-hint">posted offers accepted by others</span></div>
+      <svg id="chartOER" viewBox="0 0 460 220" preserveAspectRatio="xMidYMid meet" style="width:100%;display:block"></svg>
+    </div>
+  </div>
+  <div class="content-grid">
+    <div class="card">
+      <div class="card-label">trade relevance rate (TRR)<span class="card-hint">trades that advanced own goal</span></div>
+      <svg id="chartTRR" viewBox="0 0 460 220" preserveAspectRatio="xMidYMid meet" style="width:100%;display:block"></svg>
+    </div>
+    <div class="card">
+      <div class="card-label">information security score (ISS)<span class="card-hint">target item secrecy — 1.0 = never revealed</span></div>
+      <svg id="chartISS" viewBox="0 0 460 220" preserveAspectRatio="xMidYMid meet" style="width:100%;display:block"></svg>
+    </div>
+  </div>
+
+  <!-- Activity -->
+  <div class="analytics-sub">Activity</div>
+  <div class="content-grid">
+    <div class="card">
+      <div class="card-label">avg trades per run</div>
+      <svg id="chartTrades" viewBox="0 0 460 200" preserveAspectRatio="xMidYMid meet" style="width:100%;display:block"></svg>
+    </div>
+    <div class="card">
+      <div class="card-label">avg pareto efficiency</div>
+      <svg id="chartPareto" viewBox="0 0 460 200" preserveAspectRatio="xMidYMid meet" style="width:100%;display:block"></svg>
+    </div>
+  </div>
+  <div class="content-grid">
+    <div class="card">
+      <div class="card-label">avg invalid action rate</div>
+      <svg id="chartInvalid" viewBox="0 0 460 200" preserveAspectRatio="xMidYMid meet" style="width:100%;display:block"></svg>
+    </div>
+    <div class="card">
+      <div class="card-label">head-to-head win rate</div>
+      <table id="h2hTable" style="width:100%"></table>
+    </div>
+  </div>
+
+  <!-- History -->
+  <div class="analytics-sub">Run History</div>
+  <div class="card" style="margin-bottom:0">
+    <table id="history"></table>
+  </div>
+</div>
+
+<!-- ==================== TAB: REPLAY ==================== -->
+<div class="tab-panel" id="tab-replay">
+
 <!-- ==================== MARKET CANVAS ==================== -->
 <div class="market-row">
 <div class="market-wrapper">
@@ -981,82 +1153,7 @@ svg text { font-family: var(--mono); }
 
 <div class="summary-bar" id="summary"></div>
 
-<!-- ==================== ANALYTICS ==================== -->
-<div style="margin-top:2.5rem;border-top:1px solid var(--border);padding-top:2rem">
-  <h2 style="font-size:1rem;font-weight:600;margin:0 0 0.75rem;letter-spacing:-0.02em;color:var(--text)">Aggregate Analytics</h2>
-  <div class="filters" id="scenarioFilters" style="display:flex;gap:0.35rem;margin-bottom:1.25rem;flex-wrap:wrap"></div>
-
-  <!-- Leaderboard -->
-  <div class="card" style="margin-bottom:0">
-    <div class="card-label">leaderboard</div>
-    <table id="leaderboard"></table>
-  </div>
-
-  <!-- Outcome -->
-  <div class="analytics-sub">Outcome</div>
-  <div class="content-grid">
-    <div class="card">
-      <div class="card-label">avg goal completion</div>
-      <svg id="chartGoal" viewBox="0 0 460 240" preserveAspectRatio="xMidYMid meet" style="width:100%;display:block"></svg>
-    </div>
-    <div class="card">
-      <div class="card-label">elo rating</div>
-      <svg id="chartElo" viewBox="0 0 460 240" preserveAspectRatio="xMidYMid meet" style="width:100%;display:block"></svg>
-    </div>
-  </div>
-
-  <!-- Process Metrics -->
-  <div class="analytics-sub">Process Metrics <span class="analytics-sub-note">barter capability decomposition</span></div>
-  <div class="content-grid">
-    <div class="card">
-      <div class="card-label">trade efficiency ratio (TER)<span class="card-hint">fair value received ÷ given — 1.0 = fair</span></div>
-      <svg id="chartTER" viewBox="0 0 460 220" preserveAspectRatio="xMidYMid meet" style="width:100%;display:block"></svg>
-    </div>
-    <div class="card">
-      <div class="card-label">offer execution rate (OER)<span class="card-hint">posted offers accepted by others</span></div>
-      <svg id="chartOER" viewBox="0 0 460 220" preserveAspectRatio="xMidYMid meet" style="width:100%;display:block"></svg>
-    </div>
-  </div>
-  <div class="content-grid">
-    <div class="card">
-      <div class="card-label">trade relevance rate (TRR)<span class="card-hint">trades that advanced own goal</span></div>
-      <svg id="chartTRR" viewBox="0 0 460 220" preserveAspectRatio="xMidYMid meet" style="width:100%;display:block"></svg>
-    </div>
-    <div class="card">
-      <div class="card-label">information security score (ISS)<span class="card-hint">target item secrecy — 1.0 = never revealed</span></div>
-      <svg id="chartISS" viewBox="0 0 460 220" preserveAspectRatio="xMidYMid meet" style="width:100%;display:block"></svg>
-    </div>
-  </div>
-
-  <!-- Activity -->
-  <div class="analytics-sub">Activity</div>
-  <div class="content-grid">
-    <div class="card">
-      <div class="card-label">avg trades per run</div>
-      <svg id="chartTrades" viewBox="0 0 460 200" preserveAspectRatio="xMidYMid meet" style="width:100%;display:block"></svg>
-    </div>
-    <div class="card">
-      <div class="card-label">avg pareto efficiency</div>
-      <svg id="chartPareto" viewBox="0 0 460 200" preserveAspectRatio="xMidYMid meet" style="width:100%;display:block"></svg>
-    </div>
-  </div>
-  <div class="content-grid">
-    <div class="card">
-      <div class="card-label">avg invalid action rate</div>
-      <svg id="chartInvalid" viewBox="0 0 460 200" preserveAspectRatio="xMidYMid meet" style="width:100%;display:block"></svg>
-    </div>
-    <div class="card">
-      <div class="card-label">head-to-head win rate</div>
-      <table id="h2hTable" style="width:100%"></table>
-    </div>
-  </div>
-
-  <!-- History -->
-  <div class="analytics-sub">Run History</div>
-  <div class="card" style="margin-bottom:0">
-    <table id="history"></table>
-  </div>
-</div>
+</div><!-- /tab-replay -->
 
 </div><!-- /container -->
 
@@ -1064,6 +1161,26 @@ svg text { font-family: var(--mono); }
 // ============================================================
 // CONSTANTS
 // ============================================================
+// Model metadata (trimmed from model_registry.py)
+const MODEL_META = {
+  haiku:    { params: 3.5,  cost_in: 0.80,  provider: 'anthropic', family: 'claude' },
+  sonnet:   { params: 70,   cost_in: 3.00,  provider: 'anthropic', family: 'claude' },
+  opus:     { params: 176,  cost_in: 15.00, provider: 'anthropic', family: 'claude' },
+  hunter:   { params: 1000, cost_in: 0,     provider: 'openrouter', family: 'openrouter' },
+  healer:   { params: null, cost_in: 0,     provider: 'openrouter', family: 'openrouter' },
+  'llama-70b':   { params: 70,  cost_in: 0, provider: 'meta',    family: 'llama' },
+  'gemma-27b':   { params: 27,  cost_in: 0, provider: 'google',  family: 'gemma' },
+  'qwen3-coder': { params: 480, cost_in: 0, provider: 'alibaba', family: 'qwen' },
+  'deepseek':    { params: 671, cost_in: 0.27, provider: 'deepseek', family: 'deepseek' },
+  'gpt4o':       { params: 200, cost_in: 2.50, provider: 'openai',   family: 'gpt' },
+  'gpt4o-mini':  { params: 8,   cost_in: 0.15, provider: 'openai',   family: 'gpt' },
+  random:   { params: 0,    cost_in: 0,     provider: 'baseline', family: 'baseline' },
+};
+function modelMeta(m) {
+  const base = m.includes(':') ? m.split(':').pop() : m;
+  return MODEL_META[base] || MODEL_META[m] || { params: null, cost_in: null, provider: 'unknown', family: 'unknown' };
+}
+
 // Curated muted palette — evenly spaced around the hue wheel at ~700-weight saturation/lightness.
 // Covers 12 slots so any model gets a distinct, on-system colour automatically.
 const PALETTE = [
@@ -1142,6 +1259,18 @@ function itemStr(items) {
 }
 function itemStrShort(items) {
   return Object.entries(items).filter(([,v])=>v>0).map(([k,v])=>`${v}${ITEM_EMOJI[k]||k}`).join(' ');
+}
+
+// ============================================================
+// TABS
+// ============================================================
+function switchTab(name, btn) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  btn.classList.add('active');
+  // Re-render charts when switching to analytics (SVGs may have been hidden)
+  if (name === 'analytics') renderAnalytics();
 }
 
 // ============================================================
@@ -1924,6 +2053,7 @@ async function loadData() {
   matchLog = [...benchLog, ...arenaLog];
 
   renderLeaderboard();
+  renderFindings();
   renderAnalytics();
 
   renderRunList();
@@ -2558,8 +2688,71 @@ function filtered() {
   return activeScenario === 'all' ? allData : allData.filter(d => d.scenario === activeScenario);
 }
 
+function renderFindings() {
+  const el = document.getElementById('findings');
+  if (!el) return;
+  if (!allData.length) { el.innerHTML = '<span class="finding-empty">no data yet — run a benchmark to see findings</span>'; return; }
+
+  const findings = [];
+  const nonRandom = m => m.model !== 'random';
+
+  // Best model by goal completion
+  const gcModels = aggregateByModel(allData, (d, model, score) => score).filter(nonRandom);
+  if (gcModels.length >= 1) {
+    const best = gcModels[0];
+    const pct = (best.avg * 100).toFixed(0);
+    let txt = `<strong>${best.model}</strong> leads on goal completion (${pct}%`;
+    if (gcModels.length >= 2) {
+      const gap = ((best.avg - gcModels[1].avg) * 100).toFixed(0);
+      txt += `, +${gap}pp over ${gcModels[1].model}`;
+    }
+    txt += `). Based on ${best.count} run${best.count !== 1 ? 's' : ''}.`;
+    findings.push({ tag: 'OUTCOME', text: txt });
+  }
+
+  // ISS — cooperative norm bleedthrough
+  const issModels = aggregateProcessMetric(allData, 'information_security_score').filter(nonRandom);
+  if (issModels.length) {
+    const allNearZero = issModels.every(m => m.avg < 0.05);
+    const avgISS = issModels.reduce((s, m) => s + m.avg, 0) / issModels.length;
+    if (allNearZero) {
+      findings.push({ tag: 'FINDING', text: `All ${issModels.length} tested LLM${issModels.length > 1 ? 's' : ''} reveal target items immediately (avg ISS ${(avgISS*100).toFixed(1)}%), well below the random baseline of 14.3%. Helpfulness-trained models apply cooperative norms in competitive settings.` });
+    } else {
+      const bestISS = issModels.reduce((a, b) => a.avg > b.avg ? a : b);
+      findings.push({ tag: 'FINDING', text: `<strong>${bestISS.model}</strong> shows the highest information security (ISS ${(bestISS.avg*100).toFixed(1)}%). Average across models: ${(avgISS*100).toFixed(1)}% vs random baseline 14.3%.` });
+    }
+  }
+
+  // TER leader
+  const terModels = aggregateProcessMetric(allData, 'trade_efficiency_ratio').filter(nonRandom);
+  if (terModels.length) {
+    const best = terModels.reduce((a, b) => a.avg > b.avg ? a : b);
+    const dir = best.avg > 1 ? 'favorable' : 'unfavorable';
+    findings.push({ tag: 'PROCESS', text: `<strong>${best.model}</strong> achieves the best trade efficiency (TER ${best.avg.toFixed(2)}) — receiving ${Math.abs((best.avg - 1)*100).toFixed(0)}% ${dir === 'favorable' ? 'more' : 'less'} fair value than it gives.` });
+  }
+
+  // Scale insight — if we have Claude family with params
+  const claudeModels = gcModels.filter(m => modelMeta(m.model).family === 'claude');
+  if (claudeModels.length >= 2) {
+    const sorted = [...claudeModels].sort((a, b) => (modelMeta(a.model).params||0) - (modelMeta(b.model).params||0));
+    const smallest = sorted[0], largest = sorted[sorted.length - 1];
+    const scaleHelps = largest.avg > smallest.avg;
+    findings.push({ tag: 'SCALE', text: `Within the Claude family, ${scaleHelps ? 'larger models outperform smaller ones' : 'scale does not straightforwardly improve barter performance'}: ${sorted.map(m => `${m.model} ${(m.avg*100).toFixed(0)}%`).join(' → ')}.` });
+  }
+
+  // Data summary
+  const scenarios = [...new Set(allData.map(d => d.scenario))];
+  const modelSet = new Set(allData.flatMap(d => Object.keys(getGoalCompletion(d) || {})).filter(m => m !== 'random'));
+  findings.push({ tag: 'DATA', text: `${allData.length} runs across ${scenarios.length} scenario${scenarios.length !== 1 ? 's' : ''} (${[...scenarios].join(', ')}), ${modelSet.size} model${modelSet.size !== 1 ? 's' : ''} evaluated.` });
+
+  el.innerHTML = findings.map(f =>
+    `<div class="finding-item"><span class="finding-icon">${f.tag}</span><span class="finding-text">${f.text}</span></div>`
+  ).join('');
+}
+
 function renderAnalytics() {
   renderFilters();
+  renderScaleScatter();
   renderGoalScatter();
   renderEloChart();
   renderTradesChart();
@@ -2769,6 +2962,82 @@ function renderISSChart(svgId, models) {
     svg.innerHTML += `<circle cx="${dx}" cy="${cy}" r="5" fill="${color}" opacity="0.85"><title>${m.model}: ISS ${(m.avg * 100).toFixed(1)}% — ${m.avg < 0.02 ? 'reveals target immediately (round 0)' : 'reveals near start'}</title></circle>`;
     svg.innerHTML += `<text x="${dx + 9}" y="${cy + 3}" fill="#374151" font-size="9" font-weight="500">${(m.avg * 100).toFixed(1)}%</text>`;
   });
+}
+
+// Scale scatter: goal completion (y) vs log params_b (x), one dot per model.
+// Models with no param data are shown on a "?" column on the right.
+function renderScaleScatter() {
+  const svg = document.getElementById('chartScale');
+  if (!svg) return;
+  svg.innerHTML = '';
+
+  const data = filtered();
+  const gcAgg = aggregateByModel(data, (d, model, score) => score);
+  if (!gcAgg.length) { svg.innerHTML = '<text x="230" y="130" text-anchor="middle" fill="#9ca3af" font-size="11">no data yet</text>'; return; }
+
+  const W = 460, H = 260;
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  const p = { t: 20, r: 30, b: 36, l: 52 };
+  const pw = W - p.l - p.r, ph = H - p.t - p.b;
+
+  // Collect models with param data
+  const withParams = gcAgg.map(m => ({ ...m, params: modelMeta(m.model).params })).filter(m => m.params != null && m.params > 0);
+  const noParams = gcAgg.filter(m => { const p = modelMeta(m.model).params; return p == null; });
+
+  if (!withParams.length) { svg.innerHTML = '<text x="230" y="130" text-anchor="middle" fill="#9ca3af" font-size="11">no model size data</text>'; return; }
+
+  // X axis: log scale params (1B to max)
+  const maxParams = Math.max(...withParams.map(m => m.params), 200);
+  const logMin = Math.log10(1), logMax = Math.log10(maxParams * 2);
+  function xPos(params) { return p.l + (Math.log10(params) - logMin) / (logMax - logMin) * pw; }
+
+  // Y axis: 0–1 goal completion
+  function yPos(gc) { return p.t + ph - gc * ph; }
+
+  // Y grid lines
+  [0, 0.25, 0.5, 0.75, 1.0].forEach(v => {
+    const y = yPos(v);
+    svg.innerHTML += `<line x1="${p.l}" y1="${y}" x2="${W - p.r}" y2="${y}" stroke="#e5e7eb" stroke-width="1"/>`;
+    svg.innerHTML += `<text x="${p.l - 5}" y="${y + 3}" text-anchor="end" fill="#6b7280" font-size="8">${(v*100).toFixed(0)}%</text>`;
+  });
+
+  // X axis tick labels at round param counts
+  [3.5, 10, 70, 176, 1000].filter(v => v <= maxParams * 2).forEach(v => {
+    const x = xPos(v);
+    if (x < p.l || x > W - p.r) return;
+    svg.innerHTML += `<line x1="${x}" y1="${p.t}" x2="${x}" y2="${H - p.b}" stroke="#f3f4f6" stroke-width="1"/>`;
+    const label = v >= 1000 ? `${v/1000}T` : `${v}B`;
+    svg.innerHTML += `<text x="${x}" y="${H - p.b + 13}" text-anchor="middle" fill="#6b7280" font-size="8">${label}</text>`;
+  });
+
+  // Axis labels
+  svg.innerHTML += `<text x="${p.l + pw/2}" y="${H - 2}" text-anchor="middle" fill="#9ca3af" font-size="8">parameters (log scale)</text>`;
+  svg.innerHTML += `<text x="10" y="${p.t + ph/2}" text-anchor="middle" fill="#9ca3af" font-size="8" transform="rotate(-90,10,${p.t + ph/2})">goal %</text>`;
+
+  // Plot dots
+  withParams.forEach(m => {
+    const x = xPos(m.params);
+    const y = yPos(m.avg);
+    const color = gc(m.model);
+    const r = 6;
+    svg.innerHTML += `<circle cx="${x}" cy="${y}" r="${r}" fill="${color}" opacity="0.85"><title>${m.model}: ${(m.avg*100).toFixed(1)}% goal, ${m.params}B params</title></circle>`;
+    // Label above dot
+    svg.innerHTML += `<text x="${x}" y="${y - r - 3}" text-anchor="middle" fill="#374151" font-size="8" font-weight="500">${m.model}</text>`;
+  });
+
+  // Models with no param data — show in a "?" zone on far right with dotted border
+  if (noParams.length) {
+    const zoneX = W - p.r - 38;
+    svg.innerHTML += `<line x1="${zoneX}" y1="${p.t}" x2="${zoneX}" y2="${H - p.b}" stroke="#e5e7eb" stroke-width="1" stroke-dasharray="3,3"/>`;
+    svg.innerHTML += `<text x="${zoneX + 19}" y="${H - p.b + 13}" text-anchor="middle" fill="#9ca3af" font-size="8">?</text>`;
+    noParams.forEach((m, i) => {
+      const x = zoneX + 12 + (i % 2) * 16;
+      const y = yPos(m.avg);
+      const color = gc(m.model);
+      svg.innerHTML += `<circle cx="${x}" cy="${y}" r="5" fill="${color}" opacity="0.7"><title>${m.model}: ${(m.avg*100).toFixed(1)}% goal, params unknown</title></circle>`;
+      svg.innerHTML += `<text x="${x}" y="${y - 8}" text-anchor="middle" fill="#374151" font-size="7.5">${m.model}</text>`;
+    });
+  }
 }
 
 function renderGoalScatter() {
