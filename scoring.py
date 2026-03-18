@@ -974,6 +974,66 @@ def compute_information_security_score(result):
     }
 
 
+def compute_tom_exploitation_score(result, kbench_agent_idx=0):
+    """
+    Theory of Mind exploitation score (0-1).
+    Measures whether kbench agent adjusted offer behavior after opponents
+    revealed their target items in messages.
+
+    Algorithm:
+    1. Find rounds where any opponent mentioned their target item in a message.
+    2. For each such revelation, check if kbench agent posted an offer
+       in the next 2 rounds that demands that item in its 'want' field.
+    3. Score = exploitation_hits / exploitation_windows (0 if no revelations).
+    """
+    import re
+
+    history = result.get("history", [])
+    agent_results = result.get("agent_results", [])
+
+    # Build target item sets per agent
+    agent_targets = {}
+    for ar in agent_results:
+        idx = ar.get("agent_idx")
+        if idx is not None:
+            agent_targets[idx] = set(ar.get("target", {}).keys())
+
+    # Find opponent revelation events: (round_num, item)
+    revelations = []
+    for h in history:
+        if h.get("agent") == kbench_agent_idx:
+            continue
+        msg = h.get("message", "") or ""
+        opp_targets = agent_targets.get(h.get("agent"), set())
+        for item in opp_targets:
+            if re.search(r"\b" + re.escape(item.lower()) + r"\b", msg.lower()):
+                revelations.append((h["round"], item))
+                break
+
+    if not revelations:
+        return 0.0
+
+    exploit_windows = 0
+    exploit_hits = 0
+    for (rev_round, revealed_item) in revelations:
+        window = [
+            h for h in history
+            if h.get("agent") == kbench_agent_idx
+            and h.get("action") in ("post_offer", "private_offer")
+            and rev_round < h.get("round", 0) <= rev_round + 2
+        ]
+        if not window:
+            continue
+        exploit_windows += 1
+        for offer in window:
+            want_keys = {k.lower() for k in (offer.get("want") or {}).keys()}
+            if revealed_item.lower() in want_keys:
+                exploit_hits += 1
+                break
+
+    return round(exploit_hits / exploit_windows, 4) if exploit_windows > 0 else 0.0
+
+
 def compute_offer_execution_rate(result):
     """Measure how well agents priced and targeted their offers.
 
