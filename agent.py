@@ -874,3 +874,93 @@ class RandomAgent:
             result["target_agent"] = self.rng.randint(0, 11)
 
         return result
+
+
+class HeuristicAgent:
+    """Deterministic greedy opponent — no LLM, harder ceiling than RandomAgent.
+
+    Strategy:
+    - Accept any offer that strictly improves goal completion
+    - Post offers giving surplus items in exchange for needed items
+    - Pass only when no beneficial action exists
+    """
+
+    def __init__(self, agent_idx, seed=None, auction_enabled=False):
+        self.model_name = "heuristic"
+        self.agent_idx = agent_idx
+        self.strategy_id = None
+        self.strategy_prompt = None
+        self.total_input_tokens = 0
+        self.total_output_tokens = 0
+        self.turn_latencies = []
+        self.round_history = []
+        self.backend = "heuristic"
+        self.auction_enabled = auction_enabled
+
+    @property
+    def contestant_name(self):
+        return "heuristic"
+
+    def get_state(self):
+        return {"round_history": self.round_history, "turn_latencies": self.turn_latencies}
+
+    def set_state(self, state):
+        self.round_history = [tuple(x) for x in state.get("round_history", [])]
+        self.turn_latencies = state.get("turn_latencies", [])
+
+    def _goal_completion(self, inventory, target):
+        if not target:
+            return 1.0
+        parts = [min(inventory.get(item, 0) / qty, 1.0)
+                 for item, qty in target.items() if qty > 0]
+        return sum(parts) / len(parts) if parts else 1.0
+
+    def take_turn(self, inventory, target, order_book, recent_trades, round_num, max_rounds, auctions=None):
+        start = time.monotonic()
+        action = self._choose_action(inventory, target, order_book)
+        self.turn_latencies.append(round(time.monotonic() - start, 6))
+        self.round_history.append((round_num, action.get("action", "pass_turn")))
+        return action
+
+    def _choose_action(self, inventory, target, order_book):
+        current_gc = self._goal_completion(inventory, target)
+
+        # 1. Accept the best offer that improves goal completion
+        best_offer, best_gc = None, current_gc
+        for offer in order_book:
+            if offer.get("poster") == self.agent_idx:
+                continue
+            can_afford = all(inventory.get(item, 0) >= qty
+                             for item, qty in offer.get("want", {}).items())
+            if not can_afford:
+                continue
+            inv2 = dict(inventory)
+            for item, qty in offer.get("want", {}).items():
+                inv2[item] = inv2.get(item, 0) - qty
+            for item, qty in offer.get("give", {}).items():
+                inv2[item] = inv2.get(item, 0) + qty
+            new_gc = self._goal_completion(inv2, target)
+            if new_gc > best_gc:
+                best_gc, best_offer = new_gc, offer
+
+        if best_offer:
+            return {"action": "accept_offer", "offer_id": best_offer["id"], "message": ""}
+
+        # 2. Post an offer: give surplus, ask for needed
+        needed = {item: qty - inventory.get(item, 0)
+                  for item, qty in target.items()
+                  if inventory.get(item, 0) < qty}
+        surplus = {item: qty for item, qty in inventory.items()
+                   if item not in target or qty > target[item]}
+
+        if needed and surplus:
+            want_item = max(needed, key=lambda i: needed[i])
+            give_item = next(iter(surplus))
+            return {
+                "action": "post_offer",
+                "give": {give_item: min(1, surplus[give_item])},
+                "want": {want_item: min(1, needed[want_item])},
+                "message": "",
+            }
+
+        return {"action": "pass_turn", "message": ""}
