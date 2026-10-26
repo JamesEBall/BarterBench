@@ -2,9 +2,8 @@
 
 import sys
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from agent import RandomAgent, VALID_ACTIONS
+from barterbench.agents import RandomAgent, VALID_ACTIONS
 
 
 def test_random_agent_creation():

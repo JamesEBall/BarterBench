@@ -6,35 +6,16 @@ dist/
 build/
 .venv/
 .env
-
-# Generated data
-results.json
-elo_ratings.json
-match_log.json
-runs/
-arena/results.json
-arena/elo_ratings.json
-arena/match_log.json
-arena/runs/
-arena/live_*.json
-live_match.json
-arena/*.lock
 uv.lock
 
-# Checkpoints
-checkpoint.json
+# Generated data (results, match log, ratings, checkpoints, per-run dumps)
+results/
 
-# Experiments
-experiments.json
-experiments.json.lock
-results.json.lock
+# Local configuration
+endpoints.json
 
-# Benchmark
-benchmark_results.json
-
-# Dev docs
-CLAUDE.md
+# Archived v1 (OpenRouter) data kept locally, not versioned
+archive/
 
 # macOS
 .DS_Store
-kaggle_dataset/

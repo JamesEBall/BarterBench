@@ -4,9 +4,8 @@ import sys
 from pathlib import Path
 
 # Add parent directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from scoring import (compute_collusion_metrics, compute_communication_analysis,
+from barterbench.scoring import (compute_collusion_metrics, compute_communication_analysis,
                      compute_metrics, compute_social_welfare, compute_gini_coefficient,
                      compute_deception_rate, compute_match_confidence,
                      compute_cost_efficiency, compute_capability_scores)
@@ -420,7 +419,7 @@ def test_cost_efficiency_trades_proportional():
 
 # ---- Phase 7: Solvability ----
 
-from solvability import compute_max_welfare
+from barterbench.solvability import compute_max_welfare
 
 
 def test_solvability_trivial_scenario():

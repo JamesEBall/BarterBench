@@ -8,9 +8,9 @@ scarcity, agent count, and item variety. Ensures structural validity
 import json
 import math
 import random
-from pathlib import Path
 
-SCENARIOS_DIR = Path(__file__).parent / "scenarios"
+from .paths import SCENARIOS_DIR
+from .solvability import compute_max_welfare
 
 # Item pools for thematic variety
 ITEM_POOLS = {
@@ -46,8 +46,7 @@ def generate_scenario(
     Returns:
         dict: valid scenario JSON
     """
-    if seed is not None:
-        random.seed(seed)
+    rng = random.Random(seed)
 
     if num_agents % 2 != 0:
         num_agents += 1  # force even
@@ -59,10 +58,10 @@ def generate_scenario(
         all_items = []
         for pool in ITEM_POOLS.values():
             all_items.extend(pool)
-        random.shuffle(all_items)
+        rng.shuffle(all_items)
     else:
         all_items = list(ITEM_POOLS.get(theme, ITEM_POOLS["resources"]))
-        random.shuffle(all_items)
+        rng.shuffle(all_items)
 
     items = all_items[:num_items]
 
@@ -79,10 +78,10 @@ def generate_scenario(
         # Each role specializes: has some items, wants others
         # Split items into "have" and "want" sets
         shuffled_items = list(items)
-        random.shuffle(shuffled_items)
+        rng.shuffle(shuffled_items)
 
         # Each role has 1-2 items to offer and wants 1-3 items
-        num_have = random.randint(1, max(1, num_items // 2))
+        num_have = rng.randint(1, max(1, num_items // 2))
         have_items = shuffled_items[:num_have]
         want_items = [i for i in shuffled_items if i not in have_items]
 
@@ -93,21 +92,21 @@ def generate_scenario(
         # Set inventory quantities
         for item in items:
             if item in have_items:
-                inventory[item] = random.randint(3, 6)
+                inventory[item] = rng.randint(3, 6)
             else:
                 inventory[item] = 0
 
         # Set target quantities
         for item in want_items:
             if item in scarce_items:
-                target[item] = random.randint(2, 4)
+                target[item] = rng.randint(2, 4)
             else:
-                target[item] = random.randint(1, 3)
+                target[item] = rng.randint(1, 3)
 
         # Also want to keep some of what they have
         for item in have_items:
-            if random.random() < 0.3:
-                target[item] = random.randint(1, 2)
+            if rng.random() < 0.3:
+                target[item] = rng.randint(1, 2)
 
         role_templates.append({"inventory": inventory, "target": target})
 
@@ -135,7 +134,7 @@ def generate_scenario(
             excess = supply - target_supply
             # Remove excess from agents that have it
             holders = [a for a in agents if a["inventory"].get(item, 0) > 0]
-            random.shuffle(holders)
+            rng.shuffle(holders)
             for holder in holders:
                 if excess <= 0:
                     break
@@ -144,6 +143,21 @@ def generate_scenario(
                     holder["inventory"][item] -= can_remove
                     excess -= can_remove
 
+            supply = sum(a["inventory"].get(item, 0) for a in agents)
+
+        # Enforce the benchmark's defining property: aggregate demand > supply.
+        if demand > 0 and supply >= demand:
+            target_supply = max(1, int(demand * min(scarcity_ratio, 0.9)))
+            excess = supply - target_supply
+            holders = [a for a in agents if a["inventory"].get(item, 0) > 0]
+            rng.shuffle(holders)
+            for holder in holders:
+                if excess <= 0:
+                    break
+                can_remove = min(holder["inventory"][item] - 1, excess)
+                if can_remove > 0:
+                    holder["inventory"][item] -= can_remove
+                    excess -= can_remove
             supply = sum(a["inventory"].get(item, 0) for a in agents)
 
         if demand > 0:
@@ -211,8 +225,6 @@ def generate_calibrated_scenario(
     Returns:
         dict: scenario with difficulty close to target
     """
-    from solvability import compute_max_welfare
-
     rng = random.Random(kwargs.get("seed"))
     best_scenario = None
     best_diff = float("inf")
