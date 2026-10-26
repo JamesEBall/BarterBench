@@ -1,0 +1,10 @@
+cff-version: 1.2.0
+message: "If you use BarterBench, please cite it as below."
+title: "BarterBench: A Competitive Multi-Agent Barter Benchmark for Language Models"
+authors:
+  - family-names: Ball
+    given-names: James E.
+year: 2026
+version: 2.0.0
+repository-code: "https://github.com/JamesEBall/BarterBench"
+license: MIT

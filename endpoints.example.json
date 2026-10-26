@@ -1,0 +1,6 @@
+{
+  "_comment": "Copy to endpoints.json (git-ignored). Maps a model alias to a local OpenAI-compatible endpoint. A bare string is a base_url; an object may also pin the served model id. Aliases not listed here use $BARTERBENCH_BASE_URL (default http://localhost:8000/v1) and the registry's served_name. If an endpoint serves exactly one model, that model is used regardless of alias.",
+  "qwen3-8b": "http://localhost:8000/v1",
+  "llama-3.1-8b": {"base_url": "http://localhost:8001/v1", "model": "meta-llama/Llama-3.1-8B-Instruct"},
+  "my-finetune": {"base_url": "http://gpu-box:8002/v1", "model": "my-org/my-finetune"}
+}

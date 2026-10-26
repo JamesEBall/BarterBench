@@ -4,8 +4,7 @@ import pytest
 import sys
 import os
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from engine import MarketEngine
+from barterbench.engine import MarketEngine
 
 
 class FakeAgent:
@@ -25,7 +24,7 @@ class FakeAgent:
     def contestant_name(self):
         return self.model_name
 
-    def take_turn(self, inventory, target, order_book, recent_trades, round_num, max_rounds, auctions=None):
+    def take_turn(self, inventory, target, order_book, recent_trades, round_num, max_rounds, auctions=None, **kwargs):
         if self._call_idx < len(self.actions):
             action = self.actions[self._call_idx]
             self._call_idx += 1
@@ -54,7 +53,7 @@ class TestAuctionStartAndBid:
     def test_start_auction_creates_auction(self):
         scenario = _make_scenario(n_agents=3)
         agents = [FakeAgent(i) for i in range(3)]
-        engine = MarketEngine(scenario, agents, live_updates=False)
+        engine = MarketEngine(scenario, agents)
 
         turn = {"give": {"gold": 2}, "min_bid": {"wheat": 3}, "message": "selling gold"}
         entry = {"round": 0, "agent": 0, "model": "fake", "contestant": "fake", "action": "start_auction", "message": "selling gold", "reasoning": ""}
@@ -72,7 +71,7 @@ class TestAuctionStartAndBid:
     def test_start_auction_private(self):
         scenario = _make_scenario(n_agents=3)
         agents = [FakeAgent(i) for i in range(3)]
-        engine = MarketEngine(scenario, agents, live_updates=False)
+        engine = MarketEngine(scenario, agents)
 
         turn = {"give": {"gold": 1}, "visible_to": [1], "message": "private auction"}
         entry = {"round": 0, "agent": 0, "model": "fake", "contestant": "fake", "action": "start_auction", "message": "", "reasoning": ""}
@@ -84,7 +83,7 @@ class TestAuctionStartAndBid:
     def test_start_auction_invalid_no_items(self):
         scenario = _make_scenario(n_agents=2)
         agents = [FakeAgent(i) for i in range(2)]
-        engine = MarketEngine(scenario, agents, live_updates=False)
+        engine = MarketEngine(scenario, agents)
         engine.inventories[0] = {"gold": 0, "wheat": 3}
 
         turn = {"give": {"gold": 2}, "message": "selling"}
@@ -97,7 +96,7 @@ class TestAuctionStartAndBid:
     def test_submit_bid_valid(self):
         scenario = _make_scenario(n_agents=3)
         agents = [FakeAgent(i) for i in range(3)]
-        engine = MarketEngine(scenario, agents, live_updates=False)
+        engine = MarketEngine(scenario, agents)
 
         # Start an auction first
         engine.active_auctions.append({
@@ -117,7 +116,7 @@ class TestAuctionStartAndBid:
     def test_submit_bid_auctioneer_cannot_bid(self):
         scenario = _make_scenario(n_agents=2)
         agents = [FakeAgent(i) for i in range(2)]
-        engine = MarketEngine(scenario, agents, live_updates=False)
+        engine = MarketEngine(scenario, agents)
 
         engine.active_auctions.append({
             "id": 1, "auctioneer": 0, "give": {"gold": 2},
@@ -135,7 +134,7 @@ class TestAuctionStartAndBid:
     def test_submit_bid_private_auction_ineligible(self):
         scenario = _make_scenario(n_agents=3)
         agents = [FakeAgent(i) for i in range(3)]
-        engine = MarketEngine(scenario, agents, live_updates=False)
+        engine = MarketEngine(scenario, agents)
 
         engine.active_auctions.append({
             "id": 1, "auctioneer": 0, "give": {"gold": 2},
@@ -156,7 +155,7 @@ class TestAuctionClose:
     def test_close_auction_accept_bid(self):
         scenario = _make_scenario(n_agents=3)
         agents = [FakeAgent(i) for i in range(3)]
-        engine = MarketEngine(scenario, agents, live_updates=False)
+        engine = MarketEngine(scenario, agents)
 
         engine.active_auctions.append({
             "id": 1, "auctioneer": 0, "give": {"gold": 2},
@@ -187,7 +186,7 @@ class TestAuctionClose:
     def test_close_auction_reject_all(self):
         scenario = _make_scenario(n_agents=2)
         agents = [FakeAgent(i) for i in range(2)]
-        engine = MarketEngine(scenario, agents, live_updates=False)
+        engine = MarketEngine(scenario, agents)
 
         engine.active_auctions.append({
             "id": 1, "auctioneer": 0, "give": {"gold": 2},
@@ -209,7 +208,7 @@ class TestAuctionClose:
     def test_close_auction_non_auctioneer_rejected(self):
         scenario = _make_scenario(n_agents=2)
         agents = [FakeAgent(i) for i in range(2)]
-        engine = MarketEngine(scenario, agents, live_updates=False)
+        engine = MarketEngine(scenario, agents)
 
         engine.active_auctions.append({
             "id": 1, "auctioneer": 0, "give": {"gold": 2},
@@ -227,7 +226,7 @@ class TestAuctionClose:
     def test_close_auction_bidder_lacks_items(self):
         scenario = _make_scenario(n_agents=2)
         agents = [FakeAgent(i) for i in range(2)]
-        engine = MarketEngine(scenario, agents, live_updates=False)
+        engine = MarketEngine(scenario, agents)
 
         engine.active_auctions.append({
             "id": 1, "auctioneer": 0, "give": {"gold": 1},
@@ -248,7 +247,7 @@ class TestAuctionVisibility:
     def test_auctioneer_sees_all_bids(self):
         scenario = _make_scenario(n_agents=3)
         agents = [FakeAgent(i) for i in range(3)]
-        engine = MarketEngine(scenario, agents, live_updates=False)
+        engine = MarketEngine(scenario, agents)
 
         engine.active_auctions.append({
             "id": 1, "auctioneer": 0, "give": {"gold": 2},
@@ -268,7 +267,7 @@ class TestAuctionVisibility:
     def test_bidder_sees_only_bid_count(self):
         scenario = _make_scenario(n_agents=3)
         agents = [FakeAgent(i) for i in range(3)]
-        engine = MarketEngine(scenario, agents, live_updates=False)
+        engine = MarketEngine(scenario, agents)
 
         engine.active_auctions.append({
             "id": 1, "auctioneer": 0, "give": {"gold": 2},
@@ -288,7 +287,7 @@ class TestAuctionVisibility:
     def test_private_auction_visibility(self):
         scenario = _make_scenario(n_agents=3)
         agents = [FakeAgent(i) for i in range(3)]
-        engine = MarketEngine(scenario, agents, live_updates=False)
+        engine = MarketEngine(scenario, agents)
 
         engine.active_auctions.append({
             "id": 1, "auctioneer": 0, "give": {"gold": 2},
@@ -306,7 +305,7 @@ class TestAuctionVisibility:
     def test_closed_auction_not_visible(self):
         scenario = _make_scenario(n_agents=2)
         agents = [FakeAgent(i) for i in range(2)]
-        engine = MarketEngine(scenario, agents, live_updates=False)
+        engine = MarketEngine(scenario, agents)
 
         engine.active_auctions.append({
             "id": 1, "auctioneer": 0, "give": {"gold": 1},
@@ -322,7 +321,7 @@ class TestAutoClose:
     def test_auto_close_expires_open_auctions(self):
         scenario = _make_scenario(n_agents=2)
         agents = [FakeAgent(i) for i in range(2)]
-        engine = MarketEngine(scenario, agents, live_updates=False)
+        engine = MarketEngine(scenario, agents)
 
         engine.active_auctions.append({
             "id": 1, "auctioneer": 0, "give": {"gold": 1},
@@ -360,7 +359,7 @@ class TestAuctionFullRound:
         ]
 
         agents = [FakeAgent(0, agent0_actions), FakeAgent(1, agent1_actions)]
-        engine = MarketEngine(scenario, agents, live_updates=False)
+        engine = MarketEngine(scenario, agents)
 
         initial_inventories = [dict(inv) for inv in engine.inventories]
         start_time = __import__("time").time()
@@ -390,7 +389,7 @@ class TestAuctionFullRound:
         scenario = _make_scenario(n_agents=2, auction_enabled=False)
         agent0_actions = [{"action": "start_auction", "give": {"gold": 2}, "message": "trying"}]
         agents = [FakeAgent(0, agent0_actions), FakeAgent(1)]
-        engine = MarketEngine(scenario, agents, live_updates=False)
+        engine = MarketEngine(scenario, agents)
 
         initial_inventories = [dict(inv) for inv in engine.inventories]
         start_time = __import__("time").time()
@@ -401,7 +400,7 @@ class TestAuctionFullRound:
 
 class TestHistoryRounds:
     def test_history_rounds_caps_conversation(self):
-        from agent import MarketAgent
+        from barterbench.agents import MarketAgent
         # Create agent with history_rounds=1 (should cap at 6 items)
         agent = MarketAgent.__new__(MarketAgent)
         agent.history_rounds = 1
@@ -423,7 +422,7 @@ class TestHistoryRounds:
         assert len(agent.conversation_history) == 6
 
     def test_default_history_rounds_is_three(self):
-        from agent import MarketAgent
+        from barterbench.agents import MarketAgent
         agent = MarketAgent.__new__(MarketAgent)
         # Simulate __init__ defaults
         agent.history_rounds = 3
@@ -432,7 +431,7 @@ class TestHistoryRounds:
 
 class TestParseJsonResponse:
     def test_parse_auction_fields(self):
-        from agent import _parse_json_response
+        from barterbench.agents import _parse_json_response
 
         text = '{"action": "start_auction", "give": {"gold": 2}, "min_bid": {"wheat": 1}, "visible_to": [1, 2], "message": "selling"}'
         result = _parse_json_response(text)
@@ -442,7 +441,7 @@ class TestParseJsonResponse:
         assert result["visible_to"] == [1, 2]
 
     def test_parse_submit_bid(self):
-        from agent import _parse_json_response
+        from barterbench.agents import _parse_json_response
 
         text = '{"action": "submit_bid", "auction_id": 1, "bid": {"wheat": 3}, "message": "bidding"}'
         result = _parse_json_response(text)
@@ -451,7 +450,7 @@ class TestParseJsonResponse:
         assert result["bid"] == {"wheat": 3}
 
     def test_parse_close_auction(self):
-        from agent import _parse_json_response
+        from barterbench.agents import _parse_json_response
 
         text = '{"action": "close_auction", "auction_id": 1, "accepted_bid_idx": 0, "message": "done"}'
         result = _parse_json_response(text)
@@ -460,7 +459,7 @@ class TestParseJsonResponse:
         assert result["accepted_bid_idx"] == 0
 
     def test_parse_close_auction_reject_all(self):
-        from agent import _parse_json_response
+        from barterbench.agents import _parse_json_response
 
         text = '{"action": "close_auction", "auction_id": 1, "reject_all": true, "message": "nope"}'
         result = _parse_json_response(text)

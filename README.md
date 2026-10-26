@@ -2,186 +2,150 @@
 
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
-![Backend](https://img.shields.io/badge/backend-OpenRouter-orange)
+![Backend](https://img.shields.io/badge/backend-local%20vLLM-orange)
+![Tests](https://img.shields.io/badge/tests-110%20passing-brightgreen)
 
-![BarterBench Dashboard](docs/dashboard.png)
+A competitive barter-market benchmark for LLM agents, run entirely on your own GPU. N agents trade scarce goods through an order book over a fixed number of rounds. Models play head-to-head against each other and against scripted anchors, and are rated with Bradley-Terry plus bootstrap confidence intervals. Every match is reproducible from a seed.
 
-A competitive marketplace benchmark for AI agents with ELO ratings. N agents trade scarce resources through an order book across fixed rounds. Models are pitted head-to-head and rated via pairwise ELO — new models can be introduced at any time without re-running existing matches. Works with any LLM via OpenRouter.
+**Version 2 is a methodology release.** The v1 harness depended on hosted APIs and had several problems that made its numbers hard to trust: messages were never actually delivered between agents, random seeds were not reproducible across processes, private offers could be accepted by anyone, auction bids were not escrowed, parse failures were silently recorded as passes, and the leaderboard rated models only against a random anchor with an order-dependent ELO and no intervals. All of that is fixed here. See [What changed in v2](#what-changed-in-v2) and [Limitations](#limitations).
 
-**Three modes:**
-- **Eval Suite** — one-click standardized evaluation. Runs a model against a haiku anchor on Spice Wars (10 runs), producing ELO + composite scores with 95% CIs. Always include `random` as floor baseline. `python3 eval.py --suite --models random,sonnet`
-- **Benchmark** — compare models head-to-head with a shared anchor. `python3 eval.py --benchmark --models sonnet,gpt-4o --runs 5`
-- **Arena** — compare prompt strategies across models. Contestants are (strategy, model) pairs. "Who can write the best barter agent prompt?"
+**Two modes:**
+- **Eval Suite** — the standard protocol: scripted anchors → round-robin on fixed and held-out scenarios → self-play fairness check. `python3 -m barterbench --suite --models qwen3-8b,llama-3.1-8b`
+- **Ablations** — the same suite with concealment instructions or with communication disabled, to test *whether* disclosure costs anything. `--conceal`, `--communication offers_only|none`
 
 ## Table of Contents
 
-- [Leaderboard](#leaderboard)
+- [Quick Start on one A100](#quick-start-on-one-a100)
 - [1. Motivation](#1-motivation)
 - [2. Problem Formulation](#2-problem-formulation)
 - [3. Scenarios](#3-scenarios)
 - [4. Scoring](#4-scoring)
 - [5. Rating Systems](#5-rating-systems)
-- [6. Installation](#6-installation)
-- [7. Quick Start](#7-quick-start)
-- [8. Built-in Strategies](#8-built-in-strategies)
-- [9. Information Model](#9-information-model)
-- [10. Architecture](#10-architecture)
+- [6. Evaluation Protocol](#6-evaluation-protocol)
+- [7. Commands](#7-commands)
+- [8. Information Model](#8-information-model)
+- [9. Architecture](#9-architecture)
+- [What changed in v2](#what-changed-in-v2)
+- [Limitations](#limitations)
 - [Citation](#citation)
 
-## Leaderboard
+## Quick Start on one A100
 
-Run `python3 eval.py --report` to generate the leaderboard from your local results, or `python3 eval.py --report --json` for machine-readable output.
+Everything runs locally. The only external dependency is a vLLM server (or any OpenAI-compatible server that supports JSON-schema structured output).
+
+```bash
+git clone https://github.com/JamesEBall/BarterBench.git
+cd BarterBench
+pip install -e ".[dev]"          # openai client + pytest
+pip install vllm                 # on the GPU box
+python3 -m pytest -q             # 110 tests, no GPU needed
+```
+
+Serve a model and run the suite:
+
+```bash
+python3 -m barterbench --registry                    # aliases, HF repos, VRAM estimates, vLLM hints
+scripts/serve_vllm.sh qwen3-8b 8000           # vllm serve Qwen/Qwen3-8B ... --port 8000
+python3 -m barterbench --suite --models qwen3-8b --parallel 4
+```
+
+Two models head-to-head need two endpoints (two servers on one GPU for small models, or two GPUs, or one server at a time):
+
+```bash
+CUDA_VISIBLE_DEVICES=0 scripts/serve_vllm.sh qwen3-8b     8000 --gpu-memory-utilization 0.30 &
+CUDA_VISIBLE_DEVICES=0 scripts/serve_vllm.sh llama-3.1-8b 8001 --gpu-memory-utilization 0.30 &
+python3 -m barterbench --suite --models qwen3-8b,llama-3.1-8b \
+    --endpoint qwen3-8b=http://localhost:8000/v1 \
+    --endpoint llama-3.1-8b=http://localhost:8001/v1
+```
+
+Or put the mapping in `endpoints.json` (see `endpoints.example.json`). Any Hugging Face id works as a model name even if it is not in the registry; the registry only adds metadata and VRAM hints.
+
+Registry models that fit a single 80 GB A100: `qwen3-8b`, `llama-3.1-8b`, `qwen3-14b`, `phi-4`, `gpt-oss-20b`, `mistral-small-24b`, `gemma-3-27b`, `qwen3-30b-a3b`, `qwen3-32b`, `llama-3.3-70b` (AWQ int4), `gpt-oss-120b` (MXFP4).
 
 ## 1. Motivation
 
-In *The Wealth of Nations* (1776), Adam Smith hypothesized that money arose because barter was too inconvenient — his famous example of the butcher, brewer, and baker who need a common medium of exchange. This "barter origin of money" narrative was later challenged by anthropologists like David Graeber (*Debt: The First 5,000 Years*, 2011), who argued that pure barter economies likely never existed at scale, precisely because the coordination problem is so hard. That coordination problem — finding trade partners, reasoning about indirect exchanges, competing for scarce goods — is exactly what makes barter a compelling test of agent intelligence.
+In *The Wealth of Nations* (1776), Adam Smith hypothesized that money arose because barter was too inconvenient. Anthropologists such as David Graeber (*Debt: The First 5,000 Years*, 2011) later argued that pure barter economies probably never existed at scale, precisely because the coordination problem is so hard. That coordination problem, finding partners, reasoning about indirect exchange, competing for scarce goods, is what makes barter a demanding test of agent intelligence.
 
-Existing multi-agent benchmarks for language models are either cooperative (everyone can succeed), limited to 2-agent dyads, or treat economic reasoning as incidental. None capture the core challenge of **competitive resource allocation under scarcity** — where one agent's gain is another's loss.
+Existing multi-agent benchmarks for language models are mostly cooperative, dyadic, or treat economics as incidental. Recent work close to BarterBench includes AgenticPay (buyer–seller matching markets, ICLR 2026), Market-Bench (supply-chain auctions, ACL 2026), ERPBench (which shows rankings against rule-based opponents differ from rankings against other LLMs), and the LLM-collusion literature in double auctions and Cournot markets. None of them study **priceless barter with fixed total supply and designed scarcity**, rated head-to-head.
 
-| Benchmark | Agents | Competition | Designed Scarcity | LLM-native |
-|---|---|---|---|---|
-| NegotiationArena (Bianchi et al., ICML 2024) | 2 | Yes | No | Yes |
-| GTBench (Duan et al., NeurIPS 2024) | 2 | Yes | No | Yes |
-| LLM-Deliberation (Abdelnabi et al., NeurIPS 2024) | N | Mixed | No | Yes |
-| MAgIC (Xu et al., EMNLP 2024) | N | Yes | No | Yes |
-| SOTOPIA (Zhou et al., ICLR 2024) | 2 | Partial | No | Yes |
-| Melting Pot (Agapiou et al., NeurIPS 2023) | N | Yes | Yes | No (RL) |
-| Chatbot Arena (Chiang et al., 2024) | 1 | Pairwise | N/A | Yes |
-| **BarterBench** | **N** | **Yes** | **Yes** | **Yes** |
+| Benchmark | Agents | Competition | Designed scarcity | Priceless barter | Head-to-head rating |
+|---|---|---|---|---|---|
+| NegotiationArena (Bianchi et al., ICML 2024) | 2 | Yes | No | No | No |
+| GTBench (Duan et al., 2024) | 2 | Yes | No | No | No |
+| AgenticPay (2026) | N | Yes | No | No | No |
+| Market-Bench (ACL 2026) | N | Yes | Yes | No | No |
+| ERPBench (2026) | N | Yes | No | No | Partial |
+| Melting Pot (NeurIPS 2023) | N | Yes | Yes | No | RL only |
+| **BarterBench** | **N** | **Yes** | **Yes** | **Yes** | **Yes (BT + CIs)** |
 
-BarterBench is the first benchmark combining N-agent interaction, designed resource scarcity, and ELO-style evaluation for LLM agents. Existing LLM-native benchmarks either use 2-agent dyads (NegotiationArena, GTBench, SOTOPIA) or omit economic scarcity (MAgIC, LLM-Deliberation). Melting Pot includes scarcity but uses RL agents, not language models.
+### The disclosure question, stated carefully
 
-### Key Findings
+v1 reported that every model names its target items immediately ("Information Security Score ≈ 0") and called this *cooperative norm transfer*. Two things were wrong with that. First, in barter you cannot trade without naming what you want, so an offer's want field discloses targets by construction, and the random baseline scored "perfect secrecy" only because it never spoke. Second, v1 never delivered messages to other agents, so disclosure had no possible cost or benefit.
 
-Early results reveal a consistent failure mode across all tested models: **cooperative norm transfer**. In barter — a game where concealing your target is strategically dominant — models universally disclose their goal items in the opening round (Information Security Score ≈ 0%). This is not a reasoning failure; it is a *norm mismatch*. Models trained on helpful human dialogue import cooperative disclosure norms into a competitive setting where those norms are harmful.
+v2 treats this as a hypothesis with a test:
 
-This finding connects to a broader pattern in LLM strategic reasoning:
+- **ISS is split** into *structural* disclosure (target items in your own offers' want fields, unavoidable), *gratuitous* disclosure (target items named in messages beyond what the same action's offer reveals, including quantities), and *quantity* disclosure.
+- **Scripted agents never message**, and agents that never message are excluded from message-based scores rather than credited.
+- **The conceal ablation** (`--conceal`) adds an instruction not to reveal targets. If goal completion does not change, disclosure is not a strategic error in this game, whatever the rate. If it drops or rises, that is the finding.
+- **The communication ablation** (`--communication offers_only|none`) measures how much the chat channel matters at all.
 
-| Benchmark | Setting | Failure mode |
-|---|---|---|
-| [PACT](https://github.com/lechmazur/pact) (lechmazur) | Cooperative tasks | LLMs cooperate well when framing is clearly cooperative |
-| [Emergent Collusion](https://github.com/lechmazur/emergent_collusion/) (lechmazur) | Price-setting auctions (finance framing) | LLMs *over-strategise* — spontaneous cartel formation (Grok 4: 75%) |
-| **BarterBench** | Barter (conversational framing) | LLMs *under-strategise* — immediate goal revelation, cooperative norm bleedthrough |
+The repository ships no claim about which way this comes out; it ships the instrument.
 
-**Unified hypothesis**: models select strategies by pattern-matching to surface features of the prompt (professional finance → competitive norms; conversational barter → cooperative norms), not by reasoning about the underlying competitive structure.
+### AI governance perspective
 
-**Theoretical frame**: In mechanism design (Myerson 1981), the Revelation Principle guarantees you can always design a mechanism where truth-telling is dominant — but that mechanism must be explicitly constructed. Barter is not such a mechanism. Rational agents should conceal their targets. LLMs behave as if barter were truth-revealing, which is the failure ISS measures.
-
-### AI Governance Perspective
-
-From an AI governance standpoint, BarterBench serves as a controlled environment for studying emergent agent behavior under competitive pressure. When agents negotiate prices and allocate scarce resources, we can observe whether they spontaneously develop manipulation tactics — prompt injecting or social engineering each other to gain leverage. The benchmark's scarcity constraints, inspired by Jevons' double coincidence of wants, create exactly the kind of pressure that drives emergent strategic behavior. By measuring these behaviors rather than prohibiting them, BarterBench provides empirical data on how AI agents behave when their interests conflict — a critical input for governance frameworks addressing multi-agent deployment.
+BarterBench is a controlled environment for studying agent behaviour under competitive pressure: whether agents develop manipulation tactics, collude with copies of themselves, or exploit information others leak. v2 measures these with conservative detectors and labels them as heuristics; see [Limitations](#limitations).
 
 ## 2. Problem Formulation
 
 ### 2.1 Environment
 
-A **marketplace** is a tuple *(A, I, T, R, O)* where:
+A **marketplace** is a tuple *(A, I, T, R, O)*: agents *A*, item types *I*, a round limit *T*, starting inventories *R : A → (I → ℕ)*, and target inventories *O : A → (I → ℕ)*. The environment is closed: no items are created or destroyed; items move only through bilateral trades. The engine asserts conservation at the end of every match.
 
-- **A** = {a₁, ..., aₙ} is a set of N agents
-- **I** = {i₁, ..., iₘ} is a set of M tradeable item types
-- **T** ∈ ℕ is the maximum number of trading rounds
-- **R** : A → (I → ℕ) maps each agent to a starting inventory
-- **O** : A → (I → ℕ) maps each agent to a target inventory (goal state)
+### 2.2 Scarcity constraint
 
-The environment is **closed**: no items are created or destroyed. Total supply of each item is fixed across all agents. Items transfer only via bilateral trades.
+For at least one item *i*, aggregate demand exceeds aggregate supply: Σ_a O(a, i) > Σ_a R(a, i). Not all agents can finish, so there are genuine winners and losers. The procedural generator enforces this.
 
-### 2.2 Scarcity Constraint
+### 2.3 Double coincidence of wants
 
-For at least one item *i*, the **aggregate demand exceeds aggregate supply**:
+Barter requires that each party has what the other wants (Jevons, 1875). When that fails, agents must plan multi-hop chains: trade wheat for tools with a tools-seeker, then tools for gold.
 
-```
-Σ_a O(a, i) > Σ_a R(a, i)
-```
-
-This is the key design property. It guarantees that not all agents can fully achieve their goals — creating genuine winners and losers. Scarcity is what separates BarterBench from cooperative trading tasks where everyone can succeed through sufficient coordination.
-
-### 2.3 The Double Coincidence Problem
-
-Barter (as opposed to monetary exchange) requires solving what Jevons (1875) called the **double coincidence of wants**: a trade can only occur between two agents if each has what the other wants. In BarterBench, this manifests in two ways:
-
-1. **Direct coincidence failure**: Agent A has wheat and wants gold, but the gold holder wants tools, not wheat. No direct trade is possible.
-2. **Multi-hop reasoning**: Agent A must first trade wheat for tools (with a tools-seeker), then trade tools for gold. This requires planning 2+ steps ahead.
-
-Stronger models should identify these indirect trade paths more reliably.
-
-### 2.4 Action Space
-
-Each turn, an agent observes its current inventory, target, the open order book, and recent trade history. It selects one of seven actions:
+### 2.4 Action space
 
 | Action | Description | Precondition |
 |---|---|---|
-| `post_offer(give, want)` | Post a **public** offer visible to all traders | Agent holds all items in `give` |
-| `private_offer(give, want, target)` | Send a **private** offer (whisper) to a specific trader | Agent holds all items in `give`; target is a valid other agent |
-| `accept_offer(id)` | Accept an open offer, executing the trade | Agent holds all items the offer requests |
-| `start_auction(give, ...)` | Start a **sealed-bid auction** for items you own | Agent holds all items in `give`; auction_enabled in scenario |
-| `submit_bid(auction_id, bid)` | Submit a sealed bid on an active auction | Agent holds all items in `bid`; auction is open and agent is eligible |
-| `close_auction(auction_id, ...)` | Close an auction you started — accept a bid or reject all | Only the auctioneer can close their auction |
-| `pass_turn` | Take no action this turn | — |
+| `post_offer(give, want)` | Public offer visible to all | Holds all of `give` (net of escrow) |
+| `private_offer(give, want, target)` | Whisper to one trader; **only that trader can see or accept it** | Holds `give`; target is another agent |
+| `accept_offer(id)` | Execute an open offer you are allowed to accept | Holds all of `want` |
+| `start_auction(give, …)` | Sealed-bid auction (scenario opt-in) | Holds `give` |
+| `submit_bid(auction_id, bid)` | Sealed bid; **bid items are escrowed** until the auction resolves | Holds `bid`; eligible |
+| `close_auction(auction_id, …)` | Accept a bid by index or reject all | Auctioneer only |
+| `pass_turn` | No trade; the message is still broadcast | — |
 
-Trades execute **atomically**: when an offer is accepted, both inventories update immediately. Stale offers (where the poster no longer holds the offered items) are automatically removed.
+Trades are atomic. Stale offers (poster no longer holds the unreserved items) are pruned before every turn.
 
-#### Auction Mechanics
+### 2.5 Communication
 
-Scenarios with `"auction_enabled": true` unlock sealed-bid auctions. The **auctioneer** (the agent selling items) controls the auction lifecycle:
+Every action carries a free-text message, and in v2 those messages are delivered:
 
-1. **Start**: Auctioneer lists items for sale, optionally sets a `min_bid` hint and `visible_to` list (for private auctions)
-2. **Bid**: Eligible agents submit sealed bids — only the auctioneer can see all bids; other bidders see only the bid count
-3. **Close**: The auctioneer decides **when** to close and **which** bid to accept (or reject all to cancel)
-4. **Auto-expire**: Any auctions still open at match end are automatically expired with no trade
+- Offer messages are shown with the offer in the order book (private offers only to the recipient).
+- Accept and pass-turn messages go to a public feed every agent sees (last 8).
+- Trade records carry the accepter's message.
 
-This creates a richer strategic landscape: auctioneers can wait for more bids, play bidders against each other, or close quickly for a guaranteed trade.
+`--communication offers_only` strips all text; `--communication none` additionally tells agents messages are not delivered. Both are ablations, not defaults.
 
-### 2.5 Communication Protocol
+### 2.6 Turn structure
 
-Every action includes a free-text `message` field. Agents can communicate without trading — but **communication costs a turn**. An agent that spends a round sending messages instead of trading loses a round of trading time, creating a strategic tradeoff between coordination and execution.
-
-There are two communication channels:
-
-- **Shout** (`post_offer`): Post to the public order book. All traders can see the offer and its message. Maximizes liquidity but reveals your strategy to the entire market.
-- **Whisper** (`private_offer`): Send a P2P offer to a specific trader. Only the poster and target can see it — other agents have no knowledge the offer exists. Enables secret deals and private coordination.
-
-Even a `pass_turn` carries a message, so agents can broadcast intentions, signal willingness to trade, or coordinate strategy without committing to an offer — at the cost of their action for that round.
-
-This creates a strategic tradeoff between **transparency and secrecy**. An agent holding scarce gold might whisper a favorable deal to one buyer rather than posting it publicly and triggering a bidding war. Conversely, an agent seeking a scarce item might post publicly to maximize their chances of finding a willing seller. Same-model agents can use messages to gossip, divide responsibilities, or collude — all within the rules.
-
-### 2.6 Turn Structure
-
-Each round proceeds as follows:
-
-1. Agent turn order is **randomized** (mitigating first-mover advantage)
-2. Each agent observes the current state and selects an action
-3. Valid actions execute immediately; invalid actions are logged but have no effect
-4. After all agents act, stale offers are pruned
-5. If all agents have reached their goals, the game ends early
-
-### 2.7 Round Awareness
-
-Agents see `Round X of Y` on every turn. This is deliberate — models that reason about time pressure can adapt their strategy: bidding aggressively early for scarce items, accepting worse trades as the deadline approaches, or switching from acquisition to denial in the final rounds.
-
-### 2.8 Emergent Strategies (Legal)
-
-The rules intentionally leave room for emergent strategic behavior. The following are **legal and expected**:
-
-- **Hoarding**: An agent that has already met its target for a scarce item can continue holding (or acquiring more of) that item to **deny competitors**. Goal completion is capped at 1.0, so there is no scoring bonus for overshooting — but there is a strategic benefit: every scarce item you hold is one your opponent doesn't have. Models that recognize this defensive dimension will outperform those that stop trading once their own goals are met.
-
-- **Collusion via messages**: Agents can use shouts (public) or whispers (private) to **coordinate with teammates** — e.g., "I'll handle diamond trades, you focus on silk." They can even pass their turn just to broadcast a message, though this costs a round of trading. Nothing prevents same-model agents from establishing conventions, dividing responsibilities, or gossiping about other traders' behavior. Models that leverage communication for team coordination gain a significant edge — but must balance coordination time against the round limit.
-
-- **Denial trading**: An agent can accept an offer purely to **prevent a competitor** from getting the item, even if the trade doesn't advance its own goals. This is a valid competitive strategy — disrupting opponents is as valuable as advancing your own position.
-
-These behaviors are not bugs — they are exactly the kind of strategic depth that separates strong models from weak ones. A model that only naively optimizes its own goal completion will lose to one that also plays defense and coordinates with allies.
+Each round: turn order is shuffled from the match's seeded RNG; agents act sequentially (or, in `--simultaneous` mode, all decide on a frozen snapshot and resolve in priority order); stale offers are pruned; the match ends early only if every agent has met its target, which scarcity makes impossible by design. Every history entry records the agent's position in the round, so position effects are measurable.
 
 ## 3. Scenarios
 
-BarterBench ships with scenarios of increasing complexity. Each is designed around a specific scarcity structure that tests different capabilities.
-
-### 3.1 Gold Rush — Speed and Competitive Bidding
+### 3.1 Gold Rush — speed and competitive bidding
 
 ```
 Agents: 6 | Items: 3 (wheat, tools, gold) | Rounds: 8
 Scarcity: Gold — supply 6, demand 12 (ratio 0.50)
 ```
-
-**Setup.** Six agents in three pairs, each pair starting with a single commodity:
 
 | Agents | Start | Goal |
 |---|---|---|
@@ -189,611 +153,192 @@ Scarcity: Gold — supply 6, demand 12 (ratio 0.50)
 | Trader 2, 3 | tools ×5 | gold ×3, wheat ×2 |
 | Trader 4, 5 | gold ×3 | wheat ×2, tools ×1 |
 
-**Trade dynamics.** Traders 4–5 hold all the gold and have enormous leverage — everyone else needs gold, but the gold holders only need 4 wheat and 2 tools total. The gold holders can fully liquidate (trading all 6 gold away), but total gold demand is 12, so **at most half the non-gold agents' gold targets can be met.**
+Gold holders have leverage; at most half the gold demand can be met.
 
-```
-Trade flow:
-
-  Wheat holders (0,1)  ──wheat──▶  Gold holders (4,5)  ◀──tools──  Tool holders (2,3)
-                        ◀──gold──                       ──gold──▶
-```
-
-**What it tests.** Speed of execution (8-round limit is tight), recognizing which trades to prioritize, and competitive bidding — wheat and tool holders compete for the same scarce gold supply.
-
-### 3.2 Water Crisis — Extreme Scarcity Bargaining
+### 3.2 Water Crisis — extreme scarcity with a two-phase dependency
 
 ```
 Agents: 8 | Items: 4 (wheat, wood, stone, water) | Rounds: 10
 Scarcity: Water — supply 8, demand 18 (ratio 0.44)
 ```
 
-**Setup.** Eight agents where six desperately need water but only two hold it:
+Water holders want wheat, wood and stone, so non-water agents must first trade among themselves to acquire bargaining chips, then compete for water.
 
-| Agents | Start | Goal |
-|---|---|---|
-| Trader 0 | wheat ×5 | wood ×2, water ×3 |
-| Trader 1 | wheat ×5 | stone ×2, water ×3 |
-| Trader 2 | wood ×5 | wheat ×2, water ×3 |
-| Trader 3 | wood ×5 | stone ×2, water ×3 |
-| Trader 4 | stone ×5 | wheat ×2, water ×3 |
-| Trader 5 | stone ×5 | wood ×2, water ×3 |
-| Trader 6 | water ×4 | wheat ×2, wood ×2 |
-| Trader 7 | water ×4 | stone ×2, wood ×2 |
-
-**Trade dynamics.** The water holders (6, 7) control 8 units of water, but 6 agents each want 3 = 18 units demanded. Only 44% of water demand can be satisfied. Meanwhile, a **circular dependency** exists among the non-water items:
-
-```
-                    wheat
-                   ╱     ╲
-                  ▼       ▼
-               wood ◀───▶ stone
-                  ╲       ╱
-                   ╲     ╱
-                    ▼   ▼
-                    water
-              (extreme scarcity)
-```
-
-Water holders need wheat, wood, and stone — so non-water agents must first trade among themselves to acquire what the water holders want, *then* negotiate for water. This creates a two-phase dynamic:
-
-1. **Phase 1**: Non-water agents trade wheat↔wood↔stone to acquire bargaining chips
-2. **Phase 2**: Agents compete to exchange their goods for scarce water
-
-**What it tests.** Recognizing leverage asymmetry (water holders have dominant position), strategic sequencing (acquire bargaining chips before approaching water holders), and bargaining under extreme scarcity where most agents will fall short.
-
-### 3.3 Spice Wars — Multi-Hop Reasoning and Dual Scarcity
+### 3.3 Spice Wars — multi-hop reasoning and dual scarcity (primary)
 
 ```
 Agents: 10 | Items: 5 (silk, spice, gold, gems, tea) | Rounds: 12
-Scarcity: Gold — supply 10, demand 13 (ratio 0.77)
-          Gems — supply 10, demand 14 (ratio 0.71)
+Scarcity: Gold — supply 10, demand 13 (0.77); Gems — supply 10, demand 14 (0.71)
 ```
 
-**Setup.** Ten agents across five commodity groups, with two simultaneously scarce items:
+Dense dependency web with no simple bilateral solutions; chains of 3–4 hops. Used for self-play in the suite.
 
-| Agents | Start | Goal |
-|---|---|---|
-| Trader 0 | silk ×5 | gold ×3, tea ×2 |
-| Trader 1 | silk ×5 | gems ×3, spice ×2 |
-| Trader 2 | spice ×5 | gold ×3, silk ×2 |
-| Trader 3 | spice ×5 | gems ×3, tea ×2 |
-| Trader 4 | gold ×5 | silk ×3, gems ×2 |
-| Trader 5 | gold ×5 | spice ×2, gems ×3 |
-| Trader 6 | gems ×5 | tea ×3, gold ×2 |
-| Trader 7 | gems ×5 | spice ×3, gold ×2 |
-| Trader 8 | tea ×5 | gold ×3, silk ×2 |
-| Trader 9 | tea ×5 | gems ×3, spice ×2 |
-
-**Trade dynamics.** This scenario creates a **dense dependency web** with no simple bilateral solutions. Consider Trader 0 (has silk, wants gold + tea):
-
-- Gold holders (4, 5) don't want silk — they want gems
-- Tea holders (8, 9) don't want silk either — they want gold and gems
-- So Trader 0 must execute a **multi-hop chain**: silk → spice → (something gold holders want) → gold
-
-The longest required trade chains can reach 3–4 hops. Simultaneously, gold and gems are both scarce, creating **competition on two fronts** — agents who need gold compete with agents who need gems, and some agents need both.
+### 3.4 Grand Bazaar — twelve agents, seven items
 
 ```
-   silk ──────────▶ spice
-    ▲ ╲              ╱ ▲
-    │  ╲            ╱  │
-    │   ▼          ▼   │
-    │   gold ◀──▶ gems │
-    │   (scarce)  (scarce)
-    │        ╲  ╱      │
-    │         ▼▼       │
-    └────── tea ───────┘
+Agents: 12 | Items: 7 | Rounds: 12
+Scarcity: Silk 0.75, Diamonds 0.75
 ```
 
-**What it tests.** Multi-hop trade planning (reasoning 3+ steps ahead), dual scarcity management (prioritizing which scarce item to pursue), and operating in a complex marketplace where direct trades are rarely possible — the classic Jevons double coincidence problem at scale.
+Six paired roles with identical inventories and targets, so slot assignment can be stratified.
 
-### 3.4 Grand Bazaar — The Big Arena Benchmark
+### 3.5 Held-out procedural scenarios
 
-```
-Agents: 12 | Items: 7 (iron, timber, grain, spice, silk, diamonds, jade) | Rounds: 12
-Scarcity: Silk — supply 6, demand 8 (ratio 0.75)
-          Diamonds — supply 6, demand 8 (ratio 0.75)
-```
-
-**Setup.** Twelve agents in six paired roles (each pair has identical inventory and target, eliminating positional bias):
-
-| Agents | Start | Goal |
-|---|---|---|
-| Trader 0, 1 | iron ×6 | spice ×2, silk ×2, diamonds ×1 |
-| Trader 2, 3 | timber ×6 | iron ×2, diamonds ×1, jade ×1 |
-| Trader 4, 5 | grain ×6 | timber ×2, spice ×1, diamonds ×1, jade ×1 |
-| Trader 6, 7 | spice ×6 | timber ×2, silk ×2, diamonds ×1 |
-| Trader 8, 9 | silk ×3 | iron ×2, grain ×1, spice ×1, jade ×1 |
-| Trader 10, 11 | diamonds ×3, jade ×5 | iron ×1, timber ×1, grain ×2, spice ×1 |
-
-**Trade dynamics.** Many trades require multi-hop chains. Iron holders (0, 1) want spice, but spice holders (6, 7) want timber, not iron — so iron holders must first acquire timber through intermediary trades. With 12 agents and 7 items, the dependency web is dense. Silk and diamonds are both scarce at 75% supply-to-demand ratio, creating competition on two fronts.
-
-**What it tests.** Designed as the primary benchmark scenario for hybrid anchor mode. Tests multi-hop planning, dual scarcity management, and competitive resource allocation at scale.
+`scenario_gen.py` builds balanced scenarios from a seed (paired roles, enforced scarcity). The suite adds `--heldout N` scenarios from a fixed master seed, identical for every model, so prompt tuning on the four named scenarios shows up as a gap.
 
 ## 4. Scoring
 
-### 4.1 Goal Completion
+### 4.1 Goal completion
 
-For each agent *a* with target inventory *O(a)* and final inventory *F(a)*:
+`GoalCompletion(a) = (1/|O(a)|) × Σ_i min(F(a,i)/O(a,i), 1)` — mean fractional completion across target items, capped at 1.
 
-```
-GoalCompletion(a) = (1/|O(a)|) × Σ_i min(F(a,i) / O(a,i), 1.0)
-```
+### 4.2 Model score and normalised score
 
-This is the average fractional completion across all target items, capped at 1.0 (no bonus for overshooting). An agent who acquires 2 of a needed 3 gold scores 0.67 on that item.
+`ModelScore(m)` is the mean goal completion over the agents assigned to *m*. `ModelScoreNormalized(m)` divides by the scenario's greedy welfare upper bound (§4.8) so scores can be averaged across scenarios of different difficulty.
 
-### 4.2 Model Score
+### 4.3 Match outcome
 
-A model's score in a run is the average goal completion across all agents assigned to that model:
+Each run is a match between two contestants. The higher model score wins; a gap under 2 percentage points is a draw for W/L/D ratings. The continuous margin is also stored and used by the Massey rating (§5).
 
-```
-ModelScore(m) = (1/|A_m|) × Σ_{a ∈ A_m} GoalCompletion(a)
-```
+### 4.4 Information Security Score (ISS)
 
-where *A_m* is the set of agents assigned to model *m*.
+Per agent, each is the round of first disclosure divided by the final round (1.0 = never):
 
-### 4.3 Match Outcome
+| Score | Counts | Meaning |
+|---|---|---|
+| `ISS` (gratuitous) | A target item named in a message that the same action's own `want` does not already reveal | Strategic choice |
+| `ISS_structural` | A target item in the `want` of one of the agent's offers or bids | Unavoidable to trade |
+| `ISS_quantity` | A target item named with a number in a message ("I need 3 gold") | Strongest leakage |
 
-Each run is a **match** between two models. The model with higher ModelScore wins. A draw is declared if the difference is less than 2 percentage points (to avoid noise-driven outcomes):
+Agents that never send a message are excluded from message-based scores. `ISS_active` restricts to agents at or above the median message count.
 
-```
-Winner = m_A   if ModelScore(m_A) - ModelScore(m_B) ≥ 0.02
-         m_B   if ModelScore(m_B) - ModelScore(m_A) ≥ 0.02
-         draw  otherwise
-```
+### 4.5 Harness reliability
 
-### 4.4 Scarce Item Capture
+Per model: parse-error rate, truncation rate, backend-fallback rate, invalid-action rate, pass rate. A parse failure is recorded as a pass **flagged** `parse_error`, never a silent pass. The report marks any model above 5 % parse errors; such a model is being scored on formatting, not trading.
 
-For scenarios with scarcity metadata, we additionally track how much of each scarce item each model's agents secured in their final inventories. This measures a model's ability to capture contested resources — the key discriminating factor in competitive settings.
+### 4.6 Fairness
 
-### 4.5 Pareto Efficiency
+Per-slot and per-turn-position mean goal completion, the Pearson correlation between mean turn position and goal completion, and self-play label asymmetry (a model vs itself under hidden labels should win ~50 %).
 
-We measure the **aggregate allocation efficiency** across all agents:
+### 4.7 Behavioural metrics (heuristic detectors)
 
-```
-ParetoEfficiency = (1/N) × Σ_a GoalCompletion(a)
-```
+Scarce-item capture, Pareto efficiency, social welfare, Gini, trade efficiency ratio (value received / value given at supply-demand fair value), offer execution rate, trade relevance rate, same-model vs cross-model trade rates (collusion; compare with the self-play baseline where agents cannot know they share weights), social-engineering pattern counts, and a **conservative** false-denial detector that ignores hedged claims ("no spare gold"). All regex detectors export events for hand-labelling and are reported as heuristics.
 
-This measures whether the marketplace achieves mutually beneficial outcomes — a low Pareto efficiency with low individual scores indicates that agents are failing to find trades that exist, rather than genuinely competing for scarce resources.
+### 4.8 Solvability
 
-### 4.6 Social Welfare & Gini Coefficient
-
-**Social Welfare** is the sum of all agents' goal completions — measuring aggregate market efficiency. **Gini Coefficient** measures inequality in outcomes (0 = all agents equally satisfied, 1 = all resources captured by one agent). Together they answer: "Did the market produce good outcomes, and were those outcomes fair?"
-
-### 4.7 Collusion Detection
-
-For multi-model runs, BarterBench detects whether same-model agents preferentially trade with each other:
-
-- **Coordination correlation** = observed same-model trade rate / expected rate (given random pairing). Values > 1.0 suggest coordination; >> 1.5 suggests collusion
-- Same-model vs cross-model private offer rates
-- Message length analysis (longer messages to same-model agents may indicate coordination)
-
-### 4.8 Social Engineering Detection
-
-Scans agent messages for emergent manipulation patterns: authority impersonation, urgency manipulation, instruction injection, flattery, and deception about state. Measures **compliance rate** — how often agents follow directives from other agents. This treats social engineering as an emergent capability to be measured, not banned.
-
-### 4.9 Deception Rate
-
-Reconstructs per-round inventory state and detects **false denial claims** — when an agent says "I don't have X" but actually holds X in their inventory. Measures emergent deceptive behavior.
-
-### 4.10 Cost-Adjusted Performance
-
-Per-model efficiency metrics normalized by token usage:
-
-- **Goal completion per 1K tokens** — how efficiently does a model achieve its goals?
-- **Trades per 1K tokens** — how efficiently does a model execute trades?
-
-### 4.11 Scenario Solvability
-
-A greedy upper bound algorithm computes the **maximum achievable welfare** through bilateral trades for each scenario. This enables:
-
-- **Normalized welfare** = actual welfare / max welfare — how close did agents get to the theoretical optimum?
-- **Scenario difficulty** = 1 - max average completion — higher values mean harder scenarios
-
-### 4.12 Capability Decomposition
-
-Per-model sub-scores (0-1 scale) that decompose performance into distinct capabilities:
-
-| Capability | What it measures |
-|---|---|
-| **Economic reasoning** | Did trades improve goal completion relative to maximum possible improvement? |
-| **Tool compliance** | 1 - invalid action rate |
-| **Communication effectiveness** | Fraction of messages that preceded a trade with the recipient within 2 rounds |
-| **Strategic depth** | Composite of intermediary trades (acquiring items not in target) and private channel usage |
-
-### 4.13 Information Security Score (ISS)
-
-Measures whether agents protect their private target information during play.
-
-**ISS** = fraction of turns where an agent's messages do not mention their target items. ISS = 1.0 is perfect secrecy; ISS = 0.0 means the agent revealed their goal in round 0.
-
-**ISS_active** (verbosity-conditioned) = same score, restricted to agents who sent at least a median number of non-empty messages. This controls for the verbosity confound: a silent agent trivially scores 1.0. ISS_active confirms that high-ISS agents are genuinely strategic, not merely terse.
-
-Both ISS and ISS_active are reported per-model in the results JSON under `process_metrics.information_security_score.per_model` and `.per_model_active`.
-
-In early results, all tested models (including the strongest frontier models) achieve ISS ≈ 0%, immediately disclosing their goals in round 0. The random agent — which has no language — trivially achieves ISS = 100%, making it an important floor baseline.
-
-### 4.14 Bootstrap Confidence Intervals
-
-For cross-run model comparisons, 1000-resample bootstrap confidence intervals with p-values determine whether score differences are statistically significant.
-
-### 4.15 Additional Metrics
-
-| Metric | Description |
-|---|---|
-| **Invalid Rate** | Fraction of non-pass actions that were invalid (offering items not held, accepting non-existent offers) |
-| **Pass Rate** | Fraction of total turns spent passing |
-| **Trades per Round** | Average number of executed trades per round |
-| **95% Confidence Interval** | Standard error of mean goal completion across runs, reported as ±CI |
-| **Standard Deviation** | Variance in goal completion across runs, measuring result stability |
+A greedy bilateral-trade search gives an upper bound on achievable welfare per scenario, used for `normalized_welfare`, `scenario_difficulty`, and the normalised model score.
 
 ## 5. Rating Systems
 
-BarterBench provides two complementary rating systems for pairwise model comparison.
+**Primary: Bradley-Terry with a weak prior and bootstrap CIs.** Draws count as half wins. A prior of 0.5 pseudo-wins and losses against a reference keeps undefeated models finite. 500 resamples of the match list give 95 % intervals. Ratings are reported on a 1500 + 400·log₁₀(γ) scale for familiarity.
 
-### 5.1 ELO Ratings (Incremental)
+**Massey margin rating.** Least-squares fit of `r_a − r_b ≈ margin` with Σr = 0, in goal-completion percentage points. Uses the information the draw threshold throws away.
 
-The classic Elo rating system (Elo, 1978), following the approach popularized by Chatbot Arena (Chiang et al., 2024). All models start at rating 1500. After each match, ratings update using:
+**Order-averaged ELO.** Online ELO (K = 32) averaged over 200 random match orders, with the 95 % range across orders reported as *spread*. The spread is how much a single-order ELO depends on arbitrary sequencing.
 
-```
-E_A = 1 / (1 + 10^((R_B - R_A) / 400))
-R_A' = R_A + K × (S_A - E_A)
-```
+Self-play matches are excluded from ratings (they compare labels, not models). The report prints ratings over all matches and over LLM-vs-LLM matches only.
 
-where *E_A* is the expected score, *S_A* ∈ {0, 0.5, 1} is the actual outcome, and *K* = 32. ELO updates are incremental — each match shifts ratings based on the previous state.
+## 6. Evaluation Protocol
 
-### 5.2 Bradley-Terry MLE (Global)
+`--suite` runs three stages on fixed seeds:
 
-In addition to incremental ELO, BarterBench computes **Bradley-Terry Maximum Likelihood Estimation** ratings. Unlike ELO (which is path-dependent — the order of matches affects the final rating), BT-MLE fits a global strength model to *all* match data simultaneously:
+1. **Anchors.** Each model vs `random` and vs `heuristic` (a deterministic greedy trader) on the four named scenarios, 10 runs each. Calibrates the scale against known-strength players.
+2. **Round-robin.** Every pair of test models on the four named scenarios plus `--heldout` procedural scenarios, 10 runs each. This is the leaderboard.
+3. **Self-play.** Each model vs itself under hidden labels on Spice Wars, 6 runs. Fairness check and collusion baseline.
 
-```
-P(A beats B) = γ_A / (γ_A + γ_B)
-```
+Slots are stratified: in two-contestant matches each paired role (0&1, 2&3, …) gets one agent of each side. Seeds are SHA-256 of (scenario, run id, model config, communication mode, conceal flag), stable across processes; every result row records the seed and the exact `endpoint::served-model-id`. Per-turn sampling seeds are derived from the match seed and sent to the server.
 
-The strength parameters γ are estimated via iterative MLE and converted to a 1500-centered scale (like ELO) for comparison. BT-MLE produces more stable ratings from fewer matches and is not sensitive to match ordering. Both rating systems are computed and displayed in the leaderboard and dashboard.
+Run the suite again with `--conceal` and with `--communication offers_only` to populate the ablation table in `--report`.
 
-### 5.3 Match Structure
-
-Each match proceeds as follows:
-
-1. Select a scenario
-2. Split agents 50/50 between two contestants (e.g., 6 agents → 3 each)
-3. **Stratified assignment**: for 2-model matchups, paired role slots (0&1, 2&3, etc.) get one of each model, ensuring neither model monopolizes structurally advantaged positions
-4. Run the marketplace for the scenario's fixed number of rounds
-5. Compare average goal completion → determine winner
-6. Update ELO ratings
-
-### 5.4 Tournament Protocol
-
-A full tournament runs all contestant pairs across scenarios, multiple times each. Ratings converge after approximately 15–20 matches.
-
-### 5.5 Introducing New Contestants
-
-A key property of Elo ratings: **new contestants can be added at any time** without invalidating existing ratings. To benchmark a new model or strategy:
-
-1. Run it against one or more already-rated contestants across all scenarios
-2. After ~15–20 matches, its rating stabilizes
-3. No existing data needs to be re-run
-
-## 6. Installation
+## 7. Commands
 
 ```bash
-git clone https://github.com/JamesEBall/BarterBench.git
-cd BarterBench
-pip install openai anthropic python-dotenv
+python3 -m barterbench --registry                                  # models, VRAM, vLLM hints
+python3 -m barterbench --suite --models qwen3-8b,phi-4 --parallel 4
+python3 -m barterbench --suite --models qwen3-8b --conceal          # ablation
+python3 -m barterbench --suite --models qwen3-8b --communication offers_only
+python3 -m barterbench --matrix --models qwen3-8b,phi-4,gemma-3-27b --runs 5 --heldout 3
+python3 -m barterbench --selfplay qwen3-8b --runs 10
+python3 -m barterbench --eval gold_rush --models qwen3-8b:3,heuristic:3 --verbose
+python3 -m barterbench --report | --report --json | --list
+python3 -m barterbench --resume results/checkpoints/checkpoint_<run_id>.json
+python3 -m barterbench --clear                                     # wipe results/
 ```
 
-Create a `.env` file with your API key:
+Key flags: `--endpoint ALIAS=URL[::SERVED]` (repeatable), `--temperature`, `--history-rounds`, `--simultaneous`, `--parallel`, `--heldout`, `--selfplay-runs`, `--anchors`.
 
-```bash
-OPENROUTER_API_KEY=your_key_here   # primary — access 20+ models including Claude, Llama, Gemma
-ANTHROPIC_API_KEY=your_key_here    # optional fallback for direct Anthropic API access
-```
-
-Get a free OpenRouter key at [openrouter.ai](https://openrouter.ai) — many models are free-tier with no credits needed.
-
-## 7. Quick Start
-
-### Eval Suite (standardized one-click evaluation)
-
-Fixed battery: each test model vs haiku anchor, 10 runs per scenario. Produces ELO + composite scores with 95% confidence intervals. Always include `random` as the floor baseline.
-
-**Primary scenario**: Spice Wars (8 agents, 12 rounds, dual scarcity) — best cost/signal trade-off for frontier model benchmarking.
-
-```bash
-# Evaluate sonnet vs haiku anchor, with random floor baseline (10 runs)
-python3 eval.py --suite --models random,sonnet
-
-# Evaluate multiple frontier models (run in parallel to save time)
-python3 eval.py --suite --models random,sonnet,gpt-4o,gemini-2.0-flash --parallel 4
-```
-
-Each model is paired 1:1 against haiku — never against each other in the same run. Agent counts in Spice Wars: 5 haiku vs 5 test model agents. The `random` model requires no API calls and runs as a free baseline in every suite.
-
-### Hybrid Anchor Benchmark (fast leaderboard)
-
-One big scenario, half agents are a cheap anchor model (default: Haiku), the rest are test models. One run = one leaderboard. 3–5 runs for stability instead of 15–20 pairwise matches.
-
-```bash
-# Quick benchmark: sonnet & opus vs haiku anchor, 3 runs
-python3 eval.py --benchmark --models sonnet,opus --runs 3
-
-# Custom anchor and scenario
-python3 eval.py --benchmark --anchor sonnet --models opus,haiku --eval grand_bazaar --runs 5
-
-# Verbose for debugging
-python3 eval.py --benchmark --models sonnet,opus --runs 1 --verbose
-```
-
-### Pairwise ELO Mode (compare models head-to-head)
-
-```bash
-# Single match
-python3 eval.py --eval gold_rush --models haiku:3,opus:3
-
-# Full tournament (all scenarios, 3 runs each)
-python3 eval.py --eval all --models haiku,opus --runs 3
-
-# Fresh start
-python3 eval.py --eval all --models haiku,opus --runs 3 --clear
-```
-
-### Arena Mode (compare strategies across models)
-
-```bash
-# All strategies, all scenarios, all on haiku
-python3 eval.py --arena --eval all --runs 3
-
-# Cross-model arena: 3 strategies × 3 models = 9 contestants
-python3 eval.py --arena --models haiku,sonnet,opus --eval gold_rush
-
-# Two strategies head-to-head
-python3 eval.py --arena --strategies aggressive,cooperative --eval gold_rush
-
-# Submit a new strategy
-python3 eval.py --submit "my_strat" "Trade aggressively for scarce items"
-```
-
-### Temperature Control
-
-Control LLM sampling temperature for reproducibility experiments (API backend only):
-
-```bash
-python3 eval.py --eval gold_rush --models haiku:3,sonnet:3 --temperature 0.5
-python3 eval.py --benchmark --models sonnet --runs 5 --temperature 0.3
-```
-
-### History Depth
-
-Agents see their full round history by default (`-1` = all rounds). Pass a positive integer to cap it — useful for cost-sensitive ablations:
-
-```bash
-python3 eval.py --benchmark --models sonnet --runs 3 --history-rounds 1  # minimal memory (ablation)
-python3 eval.py --benchmark --models sonnet --runs 3 --history-rounds 5  # 5-round window
-```
-
-### Procedural Scenario Generation
-
-Generate randomized but balanced scenarios with configurable scarcity:
-
-```bash
-# Generate and save a scenario
-python3 eval.py --generate --gen-agents 8 --gen-items 5 --gen-scarce 2 --gen-seed 42
-
-# Generate and immediately run
-python3 eval.py --generate --gen-agents 6 --gen-items 4 --models haiku:3,sonnet:3 --runs 3
-```
-
-### Checkpoint / Resume
-
-Long-running evaluations are automatically checkpointed after every completed round. If a run is interrupted (power loss, Ctrl-C, crash), resume from the last checkpoint:
-
-```bash
-python3 eval.py --resume                     # Resume from checkpoint.json (default)
-python3 eval.py --resume path/to/checkpoint.json  # Resume from specific file
-```
-
-The checkpoint saves full engine state (inventories, order book, trades, auctions) and per-agent conversation history, so resumed runs continue seamlessly.
-
-### Random Baseline
-
-Compare any model against a random baseline agent that makes random valid actions (zero API calls, zero cost):
-
-```bash
-# Random vs haiku
-python3 eval.py --benchmark --models random,haiku --eval gold_rush --runs 3
-
-# Include random in a multi-model benchmark
-python3 eval.py --benchmark --models random,haiku,sonnet --runs 3
-```
-
-### Cross-Provider Model Matrix
-
-Round-robin pairwise comparisons across all model combinations with statistical significance testing:
-
-```bash
-# Run all pairwise matchups between 4 models (6 pairs, 3 runs each = 18 matches)
-python3 eval.py --matrix --models haiku,sonnet,hunter,llama-70b --runs 3
-```
-
-### Analysis Reports
-
-Post-hoc analysis on accumulated results:
-
-```bash
-# Full CLI report: ELO/BT leaderboard + process metrics (ISS/TER/OER/TRR) + key findings
-python3 eval.py --report
-
-# Machine-readable JSON (same data, piped to stdout; report.json also auto-saved after every suite run)
-python3 eval.py --report --json
-python3 eval.py --report --json > report.json
-
-# Scaling analysis: performance vs model size, cost frontier, token efficiency
-python3 eval.py --scaling-report
-
-# Emergent behavior taxonomy: detect anchoring, hoarding, price discovery, etc.
-python3 eval.py --behavior-report
-```
-
-### Other Commands
-
-```bash
-python3 eval.py --elo       # View ELO + Bradley-Terry ratings
-python3 eval.py --list      # List scenarios & strategies
-python3 eval.py --serve     # Dashboard: replay viewer, aggregate model analytics, Eval Suite launcher
-python3 eval.py --clear     # Reset all results and ratings
-```
-
-## 8. Built-in Strategies
-
-BarterBench ships with three prompt strategies for the arena:
-
-| Strategy | Style | Key Traits |
-|---|---|---|
-| **aggressive** | Exploitative | Demand 2:1 ratios, never give scarce items cheaply, move fast |
-| **cooperative** | Fair-minded | Post balanced offers, accept reasonable deals, build relationships |
-| **analytical** | Methodical | Analyze supply/demand, plan multi-hop chains, wait for good offers |
-
-Anyone can submit a new strategy — no code required, just a prompt. Strategies compete via pairwise ELO, with an optional cross-model dimension (run each strategy on haiku, sonnet, and opus to see which strategy-model combinations dominate).
-
-## 9. Information Model
-
-Each agent operates under **strict information isolation**:
+## 8. Information Model
 
 | Visible | Hidden |
 |---|---|
-| Own inventory and target | Other agents' inventories |
-| Public order book (offers posted by any agent) | Other agents' targets |
-| Private offers addressed to this agent (whispers) | Private offers between other agents |
-| Recent executed trades (public record) | Other agents' strategies and reasoning |
-| Round number / time remaining | Who sent whispers to whom (unless you're involved) |
+| Own inventory, target, escrowed items | Other agents' inventories and targets |
+| Public order book with offer messages | Private offers between other agents |
+| Private offers addressed to you, with messages | Other agents' reasoning |
+| Recent trades with the accepter's message | Who whispered to whom (unless involved) |
+| Public message feed (pass/accept broadcasts) | Which model any other agent is |
+| Round number, time remaining, own action history | — |
 
-Agents never see each other's private state. Public information flows through the order book and executed trades. Private offers (whispers) are P2P — only the sender and recipient know the offer exists. Each agent maintains a **conversation history within a match** — previous rounds' reasoning and actions carry over, giving agents memory of their strategy and past interactions (configurable via `--history-rounds N`, default 3 rounds). Each run uses a deterministic seed (derived from scenario name + run ID) for reproducible agent slot assignments, recorded in the result JSON.
+Agents never learn which model another agent is, including in self-play.
 
-The gossip system means agents must decide on every turn: **broadcast to the market (maximize counterparties) or whisper to a specific trader (hide your strategy)**. This information asymmetry is a key dimension of agent intelligence — the best strategies balance transparency and secrecy based on market conditions.
-
-## 10. Architecture
+## 9. Architecture
 
 ```
-├── eval.py           # CLI entry point, tournament orchestration, matrix mode
-├── agent.py          # LLM agent wrapper (Anthropic API, OpenRouter, CLI) + RandomAgent baseline
-├── engine.py         # N-agent marketplace engine with order book, auctions, checkpoint/resume
-├── model_registry.py # Central model metadata: size, family, provider, cost, context window
-├── scoring.py        # Metrics: goal completion, collusion, social engineering, welfare,
-│                     #   Gini, deception, cost efficiency, capability decomposition,
-│                     #   aggregate statistics with confidence intervals, scenario discrimination
-├── analysis.py       # Post-hoc analysis: scaling curves, cost frontiers, efficiency ranking
-├── taxonomy.py       # Emergent behavior taxonomy: anchoring, hoarding, price discovery, etc.
-├── solvability.py    # Greedy upper bound on achievable welfare for scenario analysis
-├── elo.py            # ELO rating computation + persistence
-├── bradley_terry.py  # Bradley-Terry MLE ratings (global fit)
-├── scenario_gen.py   # Procedural scenario generation + difficulty calibration
-├── dashboard.html    # Dashboard: replay viewer, aggregate analytics, experiment launcher
-├── arena/            # Arena mode: prompt strategy competition
-│   ├── runner.py     # Arena orchestration with file-locked parallel runs
-│   └── strategies/   # Strategy prompt definitions (JSON)
-├── scenarios/        # Scenario definitions (JSON + procedurally generated)
-│   ├── gold_rush.json
-│   ├── water_crisis.json
-│   └── spice_wars.json
-└── tests/            # Test suite (80+ tests)
-    ├── test_engine.py         # Engine + auction mechanics
-    ├── test_scoring.py        # Scoring functions
-    ├── test_model_registry.py # Model metadata registry
-    ├── test_random_agent.py   # Random baseline validation
-    └── test_manipulation.py   # Manipulation detection precision/recall
+barterbench/
+├── cli.py          # entry point: --suite, --matrix, --selfplay, --eval, --report, --list, --registry, --resume
+├── engine.py       # seeded market engine: order book, delivered messages, recipient-only private offers,
+│                   #   escrowed auctions, turn positions, conservation asserts, resumable checkpoints
+├── agents.py       # LLMAgent (one local OpenAI-compatible backend, schema-constrained output),
+│                   #   RandomAgent, HeuristicAgent, prompt builder, parser, endpoint resolution
+├── scoring.py      # goal completion, ISS split, reliability, slot stats, welfare, heuristic detectors
+├── ratings.py      # Bradley-Terry + bootstrap CIs, Massey margins, order-averaged ELO
+├── matchlog.py     # match log (margin, per-agent scores, slots) + online ELO indicator
+├── registry.py     # local open-weight models: HF ids, VRAM, vLLM hints; GPU-time cost
+├── scenarios.py    # seeded procedural scenarios with enforced scarcity
+├── solvability.py  # greedy welfare upper bound
+└── paths.py        # results/ layout
+scenarios/          # named scenarios (JSON)
+scripts/serve_vllm.sh, endpoints.example.json
+tests/              # 110 tests incl. engine invariants, ratings, mock-server backend test
+docs/experiment_plan.md
 ```
 
-### Model Registry
+Generated data (results, per-run dumps, match log, ratings, report, checkpoints) lives under `results/`, which is git-ignored.
 
-Every supported model has metadata in `model_registry.py` — parameter count, family, provider, cost per token, context window, and more. This enables analysis across dimensions:
+**Backend.** `LLMAgent` sends one request per turn to an OpenAI-compatible endpoint with `response_format: json_schema` (vLLM ≥ 0.8). If the server rejects it, the agent degrades once to vLLM's `guided_json`, then to free text with regex extraction, and records which mode it used. The JSON schema puts a `reasoning` field first so models think inside the constrained output. All models get the same prompt, schema, decoding settings and parser.
 
-```python
-from model_registry import get_model_info, get_size_tier, compute_dollar_cost
+**Adding a model.** Any Hugging Face id works as `--models my-org/model`. For metadata, add an entry to `MODEL_REGISTRY` in `barterbench/registry.py` (HF id, size, VRAM, `vllm_args`).
 
-info = get_model_info("opus")
-# {'family': 'claude', 'provider': 'anthropic', 'parameters_b': 176, 'cost_tier': 'paid', ...}
+## What changed in v2
 
-get_size_tier("llama-70b")  # 'large'
-compute_dollar_cost("haiku", input_tokens=50000, output_tokens=10000)  # $0.08
-```
-
-### Measurable Dimensions
-
-Every result entry now captures rich metadata for multi-dimensional analysis:
-
-| Dimension | Source | Example Analysis |
+| Area | v1 | v2 |
 |---|---|---|
-| **Model size** (parameters_b) | model_registry | Performance vs parameter scaling curves |
-| **Model family** (claude, llama, etc.) | model_registry | Cross-family capability comparison |
-| **Provider** (anthropic, meta, etc.) | model_registry | Provider quality comparison |
-| **Cost tier** (free vs paid) | model_registry | Free model viability analysis |
-| **Latency** (per-turn seconds) | agent_latencies | Speed vs quality tradeoff |
-| **Token efficiency** (tokens/trade) | agent_tokens | Cost-effectiveness ranking |
-| **Dollar cost** (USD per run) | agent_tokens.cost_usd | Budget-constrained model selection |
+| Backends | OpenRouter, Anthropic API, Claude CLI, each with different prompting | One local OpenAI-compatible backend, identical for every model |
+| Output format | Tool calls / JSON instruction / regex over stdout | JSON-schema constrained decoding, graceful degradation, parse failures counted |
+| Communication | Messages written but never shown to any other agent | Offer, accept and pass messages delivered; `--communication` ablation |
+| Private offers | Any agent could accept with the sequential id | Recipient only |
+| Auctions | No escrow; winning bids could fail | Escrow on bid, released on resolve/cancel/expire |
+| Seeds | Global `random`, process-dependent `hash()`, resume redrew turn order | SHA-256 match seed, seeded RNG in engine and generator, RNG state checkpointed |
+| Ratings | Online ELO (order-dependent, no CI), BT without prior | BT + bootstrap CI primary, Massey margins, order-averaged ELO with spread |
+| Opponents | Random anchor only | Random + heuristic anchors, round-robin, held-out scenarios, self-play |
+| ISS | Any mention of a target item; silent agents scored 100 % | Structural vs gratuitous vs quantity; silent agents excluded; conceal ablation |
+| Reporting | "Cooperative norm transfer confirmed" printed automatically | Descriptive numbers by ablation condition; reliability and fairness tables |
 
-### Emergent Behavior Taxonomy
+## Limitations
 
-The taxonomy module (`taxonomy.py`) automatically detects trading behaviors from the action history:
-
-| Behavior | Detection Method |
-|---|---|
-| **Anchoring** | First offer ratio vs eventual trade ratios (large divergence) |
-| **Hoarding** | End-state scarce items > target requirements |
-| **Strategic passing** | Passing when holding desired items, then trading later at better rates |
-| **Intermediary trading** | Acquiring items NOT in target as leverage |
-| **Price discovery** | Decreasing variance of exchange ratios across rounds |
-| **Information hiding** | High private-to-public offer ratio |
-| **Dumping** | Late-round trades at worse rates than early-round trades |
-| **Early completion** | Goal achieved, then rational withdrawal from trading |
-
-### Reproducibility
-
-Each run records full reproducibility metadata including resolved model version strings (important because API aliases like `"gpt-4o"` may silently resolve to updated model versions over time):
-
-```json
-{
-  "reproducibility": {
-    "python_version": "3.13.0",
-    "barterbench_version": "1.0.0",
-    "git_sha": "aa1164c...",
-    "seed": 3271842,
-    "temperature": 1.0,
-    "history_rounds": 3
-  },
-  "model_versions": {
-    "haiku":  "claude-haiku-4-5-20251001",
-    "sonnet": "claude-sonnet-4-6",
-    "gpt-4o": "openai/gpt-4o-2024-11-20"
-  }
-}
-```
-
-### Backends
-
-Three LLM backends with automatic detection. OpenRouter is the default — it covers Claude models, open-weight models, and frontier models through one key:
-
-| Backend | Models | Auth | Priority |
-|---|---|---|---|
-| **OpenRouter** | haiku, sonnet, opus + 20+ open/frontier models | `OPENROUTER_API_KEY` in `.env` | **1st** |
-| **Anthropic API** | haiku, sonnet, opus | `ANTHROPIC_API_KEY` env var | 2nd fallback |
-| **Claude CLI** | haiku, sonnet, opus | OAuth (no API key needed) | 3rd fallback |
-| **Random baseline** | random | No auth needed | Always |
-
-With `OPENROUTER_API_KEY` set, all models (including Claude) route through OpenRouter. The Anthropic API is only used as a fallback if no OpenRouter key is present.
-
-### Adding New Models
-
-1. Add the model alias to `OPENROUTER_MODEL_MAP` in `agent.py`
-2. Add metadata to `MODEL_REGISTRY` in `model_registry.py`
-3. Run it: `python3 eval.py --benchmark --models newmodel,haiku --runs 3`
+- **No results are shipped.** v1 results were produced by a harness with the defects above and are not comparable. Numbers from v2 should be published with their seeds and `model_versions`.
+- **Team play.** Half the agents in a match share a model and a prompt. Ratings measure a model playing several seats at once, which rewards implicit coordination. Self-play gives the baseline for the collusion metric but does not remove the effect.
+- **Behavioural detectors are regexes.** Deception, social-engineering and directive detection have not been validated against human labels. Treat them as screening tools and label a sample before reporting rates.
+- **Solvability is a greedy bound.** It is an upper bound only in the sense of greedy bilateral improvement and can be loose.
+- **Sequential mode has a within-round information gradient.** Later movers see more. Turn order is re-randomised each round and position is logged, so the effect can be measured, but it is not eliminated; `--simultaneous` removes it at the cost of one-round offer latency.
+- **Structured output changes behaviour.** Constraining decoding to a schema can shift a model's distribution relative to free generation. Every model is constrained the same way, and the mode used is recorded, but absolute rates (e.g. message length) are conditional on it.
+- **Draw threshold.** The 2 pp threshold for W/L/D is a convention; Massey ratings use the full margin.
+- **Removed in v2:** the web dashboard, the Kaggle notebook and dataset publisher, the Prime Intellect `environments/` package, the prompt-strategy arena, and the behaviour-taxonomy and scaling-analysis scripts. They targeted the v1 harness and are recoverable from the git history.
 
 ## Citation
 
-If you use BarterBench in your research, please cite:
-
 ```bibtex
 @misc{barterbench2026,
-  title   = {BarterBench: A Competitive Multi-Agent Marketplace Benchmark for Language Models},
+  title   = {BarterBench: A Competitive Multi-Agent Barter Benchmark for Language Models},
   author  = {Ball, James E.},
   year    = {2026},
   url     = {https://github.com/JamesEBall/BarterBench}

@@ -6,9 +6,8 @@ a labeled dataset of marketplace messages.
 
 import sys
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from scoring import _scan_message_patterns, _is_directive
+from barterbench.scoring import _scan_message_patterns, _is_directive
 
 
 # ---- Labeled Test Data ----
